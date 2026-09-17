@@ -523,6 +523,17 @@ final class Server {
     private let listenQueue = DispatchQueue(label: "listen")
     private var live: [ObjectIdentifier: Connection] = [:]
     private let liveLock = NSLock()
+    private var iconCache: [String: String] = [:]   // bundle id -> 48px PNG (base64)
+
+    /// Encoding app icons is the expensive part of /apps; the iPad polls the list
+    /// every few seconds, so keep them. Icons only change when an app updates.
+    private func cachedIcon(key: String, app: NSRunningApplication) -> String? {
+        if let hit = iconCache[key] { return hit }
+        guard let icon = app.icon, let b64 = pngBase64(icon, size: 48) else { return nil }
+        if iconCache.count > 200 { iconCache.removeAll() }
+        iconCache[key] = b64
+        return b64
+    }
 
     init(config: Config) {
         self.config = config
@@ -653,19 +664,45 @@ final class Server {
 
         case "/apps":
             let frontPid = frontmostPid()
-            let apps = NSWorkspace.shared.runningApplications
-                .filter { $0.activationPolicy == .regular }
-                .map { app -> [String: Any] in
-                    var d: [String: Any] = [
-                        "pid": Int(app.processIdentifier),
-                        "name": app.localizedName ?? "?",
-                        "active": app.processIdentifier == frontPid,
-                    ]
-                    if let b = app.bundleIdentifier { d["bundle"] = b }
-                    if let icon = app.icon, let b64 = pngBase64(icon, size: 48) { d["icon"] = b64 }
-                    return d
+            let withIcons = (req.query["icons"] ?? "1") != "0"
+            var pids = Set<pid_t>()
+
+            // Live source 1: the window server. Always current, never cached.
+            if let info = CGWindowListCopyWindowInfo([.excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] {
+                for w in info {
+                    guard let p = w[kCGWindowOwnerPID as String] as? Int, p > 0 else { continue }
+                    if let layer = w[kCGWindowLayer as String] as? Int, layer != 0 { continue }
+                    pids.insert(pid_t(p))
                 }
-                .sorted { ($0["active"] as? Bool ?? false) && !($1["active"] as? Bool ?? false) }
+            }
+            // Live source 2: NSWorkspace's registry (covers windowless apps), unioned
+            // because it can go stale in a long-running process.
+            for a in NSWorkspace.shared.runningApplications where a.activationPolicy == .regular {
+                pids.insert(a.processIdentifier)
+            }
+            if frontPid > 0 { pids.insert(frontPid) }
+            pids.remove(getpid())
+
+            let apps = pids.compactMap { pid -> [String: Any]? in
+                guard let app = NSRunningApplication(processIdentifier: pid),
+                      app.activationPolicy == .regular else { return nil }
+                var d: [String: Any] = [
+                    "pid": Int(pid),
+                    "name": app.localizedName ?? "?",
+                    "active": pid == frontPid,
+                ]
+                if let b = app.bundleIdentifier { d["bundle"] = b }
+                if withIcons, let key = app.bundleIdentifier ?? app.localizedName,
+                   let icon = cachedIcon(key: key, app: app) {
+                    d["icon"] = icon
+                }
+                return d
+            }
+            .sorted { a, b in
+                let aa = (a["active"] as? Bool ?? false), bb = (b["active"] as? Bool ?? false)
+                if aa != bb { return aa }
+                return (a["name"] as? String ?? "") < (b["name"] as? String ?? "")
+            }
             return json(["ok": true, "apps": apps, "frontmost": Int(frontPid)])
 
         case "/focus":
@@ -852,5 +889,10 @@ if !trusted {
     Log.line("  ACCESSIBILITY: granted ✓")
 }
 
-// keep serving forever
-dispatchMain()
+// Keep a real run loop alive, not dispatchMain(): NSWorkspace only refreshes its
+// registry of running apps when its launch/quit notifications can be delivered,
+// which needs a CFRunLoop on the main thread. Without this the app list freezes at
+// whatever was open when the helper started — new apps never show up.
+let nsapp = NSApplication.shared
+nsapp.setActivationPolicy(.accessory)   // never steal focus from the user
+nsapp.run()

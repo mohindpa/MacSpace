@@ -718,6 +718,7 @@ function buildKey(k, row){
 }
 
 function render(){
+  stopAppsSync();          // any panel timer dies with the panel it belonged to
   // tabs
   const tabs = document.getElementById('tabs');
   tabs.innerHTML = '';
@@ -964,13 +965,54 @@ function buildSnips(body){
   body.appendChild(col);
 }
 
+/* ---------- Apps panel: live-syncs the Mac's running apps ---------- */
+let appsTimer = null, appsSig = '', appIcons = {}, lastIconFetch = 0;
+
+function stopAppsSync(){ if(appsTimer){ clearInterval(appsTimer); appsTimer = null; } }
+
 function buildApps(body){
+  stopAppsSync();
+  const col = document.createElement('div');
+  col.className = 'col';
+  const bar = document.createElement('div');
+  bar.className = 'chips';
+  const refresh = document.createElement('button');
+  refresh.className = 'chip';
+  refresh.textContent = '↻ refresh now';
+  const hint = document.createElement('span');
+  hint.className = 'hint';
+  hint.textContent = 'syncing with the Mac…';
+  bar.append(refresh, hint);
   const wrap = document.createElement('div');
   wrap.className = 'apps';
-  wrap.textContent = 'loading apps…';
-  body.appendChild(wrap);
-  api('/apps').then(d => {
-    if(!d || !d.apps){ wrap.textContent = 'could not read the Mac app list'; return; }
+  col.append(bar, wrap);
+  body.appendChild(col);
+
+  refresh.onclick = () => loadApps(wrap, hint, false);
+  loadApps(wrap, hint, false);
+  // keep in step with the Mac: new apps appear, the highlight follows the frontmost
+  appsTimer = setInterval(() => { if(!document.hidden) loadApps(wrap, hint, true); }, 3000);
+}
+
+async function loadApps(wrap, hint, quiet){
+  const d = await api('/apps' + (quiet ? '?icons=0' : ''));
+  if(!d || !d.apps){ hint.textContent = 'could not read the Mac app list'; return; }
+  d.apps.forEach(a => {                       // icons are cached: only fetched once each
+    const key = a.bundle || a.name;
+    if(a.icon) appIcons[key] = a.icon;
+    else if(appIcons[key]) a.icon = appIcons[key];
+  });
+  // the quiet poll skips icons, so if any tile is still iconless, do an
+  // icon-carrying fetch — rate-limited so it can't turn into a tight loop
+  if(quiet && d.apps.some(a => !a.icon) && Date.now() - lastIconFetch > 8000){
+    lastIconFetch = Date.now();
+    setTimeout(() => loadApps(wrap, hint, false), 120);
+  }
+  const sig = d.apps.map(a => a.pid + (a.active ? '*' : '')).join(',');
+  if(wrap.childElementCount === d.apps.length && sig === appsSig){
+    [...wrap.children].forEach((el, i) => el.classList.toggle('on', !!d.apps[i].active));
+  } else {
+    appsSig = sig;
     wrap.innerHTML = '';
     d.apps.forEach(a => {
       const el = document.createElement('div');
@@ -984,12 +1026,17 @@ function buildApps(body){
       n.textContent = a.name;
       el.appendChild(n);
       el.onclick = async () => {
+        hint.textContent = 'switching to ' + a.name + '…';
         const r = await api('/focus', {pid: a.pid});
-        if(r && r.ok){ render(); }
+        [...wrap.children].forEach(x => x.classList.remove('on'));
+        el.classList.add('on');
+        if(!r || !r.ok) hint.textContent = 'could not activate ' + a.name;
+        loadApps(wrap, hint, true);
       };
       wrap.appendChild(el);
     });
-  });
+  }
+  hint.textContent = 'live · ' + d.apps.length + ' apps · tap one to bring it to the front';
 }
 
 function buildClip(body){
