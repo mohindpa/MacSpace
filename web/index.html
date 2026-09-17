@@ -37,6 +37,11 @@
   .hbtn{font-size:13px;padding:7px 11px;border-radius:8px;background:var(--key);border:1px solid var(--line);}
   .hbtn.on{background:var(--accent);border-color:var(--accent);color:#fff;}
   .hbtn.rec{background:var(--bad);border-color:var(--bad);color:#fff;}
+  /* Buy me a coffee: the official widget renders a 273x60 pill, so scale it down to
+     the header height. transform doesn't shrink the layout box, hence the fixed
+     152px slot that lets the rest paint over it. */
+  #bmcwrap{flex:0 0 auto;width:152px;height:34px;display:flex;align-items:center;overflow:visible;}
+  #bmcwrap .bmc-btn{transform:scale(.55);transform-origin:left center;}
 
   /* ---------- layer tabs ---------- */
   #tabs{display:flex;gap:6px;padding:6px 10px;overflow-x:auto;flex:0 0 auto;border-bottom:1px solid var(--line);}
@@ -199,6 +204,7 @@
 <header>
   <span class="dot" id="dot"></span>
   <span id="status">connecting…</span>
+  <div id="bmcwrap"><script type="text/javascript" src="https://cdnjs.buymeacoffee.com/1.0.0/button.prod.min.js" data-name="bmc-button" data-slug="mohind.fx" data-color="#FFDD00" data-emoji=""  data-font="Comic" data-text="Buy me a coffee" data-outline-color="#000000" data-font-color="#000000" data-coffee-color="#ffffff" ></script></div>
   <button class="hbtn" id="btnBar" title="quick bar">⌘</button>
   <button class="hbtn" id="btnNative">⌨︎ iPad keys</button>
   <button class="hbtn" id="btnEdit">✏️ Edit</button>
@@ -1699,6 +1705,12 @@ setupNative();
 render();
 ping();
 setInterval(() => { if(!busy) ping(); }, 15000);
+// the coffee button needs the CDN — drop its slot rather than leaving a hole
+// in the header when the iPad is offline
+addEventListener('load', () => setTimeout(() => {
+  const w = document.getElementById('bmcwrap');
+  if(w && !w.querySelector('.bmc-btn')) w.style.display = 'none';
+}, 1500));
 </script>
 </body>
 </html>
