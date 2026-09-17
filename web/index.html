@@ -350,7 +350,7 @@ const DEFAULT_LAYOUTS = [{
         K('J','j'), K('K','k'), K('L','l'), K(';',';',null,{t:':'}), K("'","'",null,{t:'"'}), K('⏎','return',null,{w:2.25}) ],
       [ M('⇧','shift',{w:2.25}), K('Z','z'), K('X','x'), K('C','c'), K('V','v'), K('B','b'), K('N','n'),
         K('M','m'), K(',',',',null,{t:'<'}), K('.','.',null,{t:'>'}), K('/','/',null,{t:'?'}),
-        K('⌫','delete',null,{w:2.75,s:'DEL'}) ],
+        M('⇧','rshift',{w:2.75,s:'right'}) ],
       [ M('⌃','control',{w:1.25}), M('⌥','option',{w:1.25}), M('⌘','cmd',{w:1.5}),
         K('space','space',null,{w:7}),
         K('←','left'), K('↑','up'), K('↓','down'), K('→','right') ],
@@ -461,21 +461,47 @@ let state = {
   caps: false,
 };
 
-/* is a capital letter coming next? shift armed/locked, or caps lock on */
+/* is a capital letter coming next? either shift (latched or locked) or caps lock */
 function capsActive(){
-  return state.caps || state.armed.has('shift') || state.locked.has('shift');
+  const s = state.armed, l = state.locked;
+  return state.caps || s.has('shift') || l.has('shift') || s.has('rshift') || l.has('rshift');
 }
 
-/* Bump whenever the built-in layout changes shape: an iPad that opened an older
-   build must not keep serving its stale (e.g. missing-row) layout from storage. */
-const LAYOUT_VERSION = 5;
+/* Bump when the built-in layout changes shape. Older stored layouts are MIGRATED,
+   never wiped — losing his own edits every time the defaults change is worse than
+   shipping a stale key. */
+const LAYOUT_VERSION = 6;
+
+/// v6: the right-hand ⇧ belongs at the end of the Z row, under the ⌫.
+/// v5 had replaced it with a second (DEL-labelled) backspace.
+function migrateLayouts(layouts, from){
+  if(from < 6){
+    layouts.forEach(L => (L.layers || []).forEach(layer => (layer.rows || []).forEach(row => {
+      row.forEach(k => {
+        if(k && k.s === 'DEL' && k.a && k.a.k === 'delete' && (k.w || 1) >= 2.5){
+          k.l = '⇧';
+          k.w = 2.75;
+          k.st = 'mod';
+          k.s = 'right';
+          k.a = { m: 'rshift' };
+        }
+      });
+    })));
+  }
+  return layouts;
+}
 
 function loadStore(){
   const fresh = () => JSON.parse(JSON.stringify(DEFAULT_LAYOUTS));
   try{
     const raw = JSON.parse(localStorage.getItem('ipadkb:layouts') || 'null');
-    if(raw && raw.v === LAYOUT_VERSION && Array.isArray(raw.layouts) && raw.layouts.length){
-      state.layouts = raw.layouts;
+    if(raw && Array.isArray(raw.layouts) && raw.layouts.length){
+      if(raw.v === LAYOUT_VERSION){
+        state.layouts = raw.layouts;
+      } else {
+        state.layouts = migrateLayouts(raw.layouts, raw.v || 0);
+        localStorage.setItem('ipadkb:layouts', JSON.stringify({ v: LAYOUT_VERSION, layouts: state.layouts }));
+      }
     } else {
       state.layouts = fresh();
       localStorage.setItem('ipadkb:layouts', JSON.stringify({ v: LAYOUT_VERSION, layouts: state.layouts }));
