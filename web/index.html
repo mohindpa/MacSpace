@@ -459,12 +459,33 @@ let state = {
   rec: null,
   latency: null,
   caps: false,
+  held: new Set(),
 };
 
-/* is a capital letter coming next? either shift (latched or locked) or caps lock */
-function capsActive(){
-  const s = state.armed, l = state.locked;
-  return state.caps || s.has('shift') || l.has('shift') || s.has('rshift') || l.has('rshift');
+/* characters a US Mac keyboard only produces with shift held */
+const SHIFTED_CHARS = new Set(['~','!','@','#','$','%','^','&','*','(',')','_','+','{','}','|',':','"','<','>','?']);
+
+/* a shift key is down: armed (latched), locked or physically held */
+function shiftActive(){
+  const s = state.armed, l = state.locked, h = state.held;
+  return s.has('shift') || s.has('rshift') || l.has('shift') || l.has('rshift')
+      || h.has('shift') || h.has('rshift');
+}
+/* is a capital letter coming next? either shift key, or caps lock */
+function capsActive(){ return state.caps || shiftActive(); }
+
+/* one key face, painted for the current shift state */
+function applyFace(f, up, shifted){
+  const swap = f.pair && shifted;          // symbol keys swap, caps lock does not
+  f.lblEl.textContent = swap ? f.top
+    : (f.letter && f.autoLabel ? (up ? f.ch.toUpperCase() : f.ch) : f.main);
+  if(f.topEl) f.topEl.textContent = swap ? f.main : f.top;
+}
+/* repaint faces in place — used while a modifier is physically held, where a full
+   render() would replace the pressed element and could strand the modifier down */
+function refreshFaces(){
+  const up = capsActive(), shifted = shiftActive();
+  document.querySelectorAll('.key').forEach(el => { if(el._face) applyFace(el._face, up, shifted); });
 }
 
 /* Bump when the built-in layout changes shape. Older stored layouts are MIGRATED,
@@ -602,7 +623,18 @@ function mergeMods(extra){
   (extra || []).forEach(x => set.add(x));
   return [...set];
 }
-function clearArmed(){ if(state.armed.size){ state.armed.clear(); render(); } }
+function clearArmed(){
+  if(!state.armed.size) return;
+  state.armed.clear();
+  // repaint in place — a full render() would detach a key the finger is still
+  // holding, stranding its repeat timer (which then types on forever)
+  repaintClasses();
+  refreshFaces();
+}
+/* refresh key classes without rebuilding the board */
+function repaintClasses(){
+  document.querySelectorAll('.key').forEach(el => { if(el._k) el.className = keyClass(el._k); });
+}
 
 /* ---------- actions ---------- */
 function doAction(a, keyEl){
@@ -670,23 +702,34 @@ const heldMods = new Set(); // modifiers currently held down on the Mac
 function releaseHeldMods(){
   heldMods.forEach(m => post('/key', {k: m, m: [], d: 'up'}));
   heldMods.clear();
+  state.held.clear();
+  refreshFaces();
 }
 
 function buildKey(k, row){
   const el = document.createElement('button');
   el.className = keyClass(k);
+  el._k = k;
   el.style.flexGrow = String(k.w || 1);
   el.dataset.w = String(k.w || 1);
-  if(k.t){ el.classList.add('hastop'); const t = document.createElement('div'); t.className='top'; t.textContent = k.t; el.appendChild(t); }
+  let topEl = null;
+  if(k.t){ el.classList.add('hastop'); topEl = document.createElement('div'); topEl.className='top'; topEl.textContent = k.t; el.appendChild(topEl); }
   const lbl = document.createElement('div');
   lbl.className = 'lbl';
-  // letter keys show their live case: lowercase normally, uppercase when
-  // shift is armed/locked or caps lock is on (matches what the Mac will type)
   const ch = k.a && typeof k.a.k === 'string' ? k.a.k : null;
-  const isLetter = ch && /^[a-z]$/.test(ch);
+  const isLetter = !!ch && /^[a-z]$/.test(ch);
   const autoLabel = !k.l || String(k.l).toLowerCase() === ch;
-  lbl.textContent = (isLetter && autoLabel) ? (capsActive() ? ch.toUpperCase() : ch)
-                                            : (k.l !== undefined ? k.l : '');
+  // a plain character whose partner needs shift (1→!, /→?, =→+) swaps faces when
+  // shift is down, exactly the way the letters switch case — and it matches what
+  // the Mac will actually type. Keys that are already the shifted character
+  // (the #123 layer) are left alone, and caps lock never swaps them.
+  const isSymbolPair = !!(ch && ch.length === 1 && !SHIFTED_CHARS.has(ch)
+                          && typeof k.t === 'string' && k.t.length === 1
+                          && SHIFTED_CHARS.has(k.t));
+  const faceMain = (isLetter && autoLabel) ? ch : (k.l !== undefined ? k.l : '');
+  el._face = { letter:isLetter, autoLabel, pair:isSymbolPair, ch,
+               main:faceMain, top:k.t, lblEl:lbl, topEl };
+  applyFace(el._face, capsActive(), shiftActive());
   el.appendChild(lbl);
   if(k.s){ const s = document.createElement('div'); s.className='sub'; s.textContent = k.s; el.appendChild(s); }
   if(k.bg || k.fg){
@@ -709,15 +752,23 @@ function buildKey(k, row){
     if(isMod){
       el.classList.add('press');
       holdT = setTimeout(() => {                 // hold = really hold it (like a key)
+        if(!el.isConnected) return;              // key was re-rendered away mid-press
         modHeld = true;
         heldMods.add(a.m);
+        state.held.add(a.m);
+        refreshFaces();                          // held shift shows on the faces too
         post('/key', {k: a.m, m: [], d: 'down'});
       }, MOD_HOLD);
     } else if(repeatable){
       sentOnDown = true;                         // type on press, like a real keyboard
       doAction(a, el);
       holdT = setTimeout(() => {
-        repT = setInterval(() => doAction(a, el), REPEAT_MS);
+        repT = setInterval(() => {
+          // if the key was re-rendered away while the finger is still down, stop —
+          // otherwise the timer keeps typing from the detached element forever
+          if(!el.isConnected){ stopTimers(); return; }
+          doAction(a, el);
+        }, REPEAT_MS);
       }, REPEAT_DELAY);
     }
   });
@@ -728,6 +779,8 @@ function buildKey(k, row){
     if(isMod && modHeld){
       modHeld = false;
       heldMods.delete(a.m);
+      state.held.delete(a.m);
+      refreshFaces();
       post('/key', {k: a.m, m: [], d: 'up'});
     }
   };
