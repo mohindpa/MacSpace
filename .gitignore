@@ -1,0 +1,10 @@
+# runtime state — never commit these
+token
+server.log
+preview*.png
+
+# build output
+build/
+
+# macOS
+.DS_Store

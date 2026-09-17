@@ -1,0 +1,1578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Keyboard">
+<meta name="theme-color" content="#0b0d10">
+<title>MacSpace — iPad keyboard & trackpad for your Mac</title>
+<style>
+  :root{
+    /* ---- theme tokens (overridden live by the Theme editor) ---- */
+    --bg:#1c1c1e; --panel:#2c2c2e; --key:#3a3a3c; --keytop:#3a3a3c;
+    --line:#3a3a3c; --txt:#ffffff; --dim:#8e8e93;
+    --modtop:#333336; --modtext:#ffffff;
+    --accent:#0a84ff; --accbot:#0a84ff; --acctext:#ffffff;
+    --dangertop:#ff453a; --dangerbot:#ff453a;
+    --input:#48484a;
+    --good:#30d158; --warn:#ff9f0a; --bad:#ff453a;
+    --radius:9px; --gap:7px; --keyfont:20px; --keyh:1; --glow:#0a84ff; --pulse:160ms;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
+    font:400 16px/1.2 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+    overscroll-behavior:none; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;}
+  body{display:flex;flex-direction:column;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);}
+  button,input,select,textarea{font:inherit;color:inherit;}
+  button{background:none;border:0;padding:0;cursor:pointer;}
+
+  /* ---------- header ---------- */
+  header{display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);flex:0 0 auto;}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--bad);flex:0 0 auto;box-shadow:0 0 8px currentColor;}
+  .dot.on{background:var(--good);} .dot.warn{background:var(--warn);}
+  #status{font-size:12px;color:var(--dim);flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .hbtn{font-size:13px;padding:7px 11px;border-radius:8px;background:var(--key);border:1px solid var(--line);}
+  .hbtn.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .hbtn.rec{background:var(--bad);border-color:var(--bad);color:#fff;}
+
+  /* ---------- layer tabs ---------- */
+  #tabs{display:flex;gap:6px;padding:6px 10px;overflow-x:auto;flex:0 0 auto;border-bottom:1px solid var(--line);}
+  #tabs::-webkit-scrollbar{display:none;}
+  .tab{white-space:nowrap;font-size:13px;padding:7px 13px;border-radius:999px;background:var(--panel);
+       border:1px solid var(--line);color:var(--dim);}
+  .tab.on{background:var(--keytop);color:var(--txt);border-color:#4a5666;}
+
+  /* ---------- keyboard ---------- */
+  #board{flex:1 1 auto;display:flex;flex-direction:column;gap:7px;padding:8px 8px 10px;min-height:0;justify-content:flex-end;}
+  /* row height is set in px by sizeRows(): key width × --keyh, so keys keep
+     real-keyboard proportions instead of stretching to fill the screen */
+  .row{display:flex;gap:var(--gap);flex:0 0 auto;min-height:34px;}
+  .key{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;
+       background:linear-gradient(180deg,var(--keytop),var(--key));border:1px solid var(--line);
+       border-radius:var(--radius);min-width:0;overflow:hidden;
+       transition:transform .04s,background .08s,border-color .1s,box-shadow .12s ease-out;flex-grow:1;flex-basis:0;}
+  /* press feedback: fast pulse + a light stroke ringing the key */
+  .key:active,.key.press{
+    border-color:var(--glow);
+    background:linear-gradient(180deg,var(--keytop),var(--key));
+    background:linear-gradient(180deg,
+        color-mix(in srgb, var(--glow) 26%, var(--keytop)),
+        color-mix(in srgb, var(--glow) 14%, var(--key)));
+    transform:translateY(1px);
+    animation:keypulse var(--pulse,160ms) cubic-bezier(.2,.7,.3,1);
+  }
+  @keyframes keypulse{
+    0%  {box-shadow:0 0 0 0 var(--glow), 0 0 0 0 transparent;}
+    30% {box-shadow:0 0 0 2.5px var(--glow), 0 0 20px 6px var(--glow);}
+    100%{box-shadow:0 0 0 1px var(--glow), 0 0 9px 0 var(--glow);}
+  }
+  .key .lbl{font-size:clamp(11px,2.6vh,var(--keyfont));font-weight:500;line-height:1.05;padding:0 4px;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;text-align:center;}
+  .key.hastop .lbl{margin-top:0.55em;}
+  .key .top{position:absolute;top:3px;left:50%;transform:translateX(-50%);font-size:calc(clamp(11px,2.6vh,var(--keyfont)) * .62);
+            color:var(--dim);line-height:1;}
+  .key .sub{position:absolute;top:3px;right:5px;font-size:9px;color:var(--dim);}
+  .key.mod{background:linear-gradient(180deg,var(--modtop),var(--modtop));}
+  .key.mod .lbl{font-size:clamp(11px,2.6vh,calc(var(--keyfont) * .92));color:var(--modtext);}
+  .key.accent{background:linear-gradient(180deg,var(--keytop),var(--key));border-color:var(--accent);}
+  .key.accent .lbl{color:var(--accent);}
+  .key.active{background:linear-gradient(180deg,var(--accent),var(--accbot));border-color:var(--accent);color:var(--acctext);}
+  .key.active .lbl{color:var(--acctext);}
+  .key.active .top,.key.active .sub{color:var(--acctext);opacity:.75;}
+  .key.locked{box-shadow:inset 0 0 0 2px var(--good);}
+  .key.danger{background:linear-gradient(180deg,var(--dangertop),var(--dangerbot));border-color:var(--dangertop);}
+  .key.danger .lbl{color:#fff;}
+  .key.custom{background:linear-gradient(180deg,var(--kbg,var(--keytop)),var(--kbg,var(--key)));}
+  .key.custom .lbl{color:var(--kfg,var(--txt));}
+  .key.custom:active,.key.custom.press,.key.custom.active{background:linear-gradient(180deg,var(--accent),var(--accbot));}
+  .key.custom:active .lbl,.key.custom.press .lbl,.key.custom.active .lbl{color:var(--acctext);}
+  /* armed / locked modifiers glow softly all the time */
+  .key.active{box-shadow:0 0 0 1px var(--glow), 0 0 12px 1px var(--glow);}
+  .row.tools .key .lbl{font-size:14px;}
+  .row.tools .key .top{display:none;}
+  .row.tools .key .sub{font-size:8px;top:2px;right:4px;}
+
+  /* ---------- quick bar (shortcut shelf above the keys) ---------- */
+  .quickbar{display:flex;flex-wrap:wrap;gap:7px;align-items:center;justify-content:center;
+            flex:0 0 auto;padding:2px 2px 4px;}
+  .qbtitle{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;padding-right:2px;}
+  .qchip{font-size:14px;font-weight:500;padding:9px 12px;border-radius:9px;background:var(--key);
+         border:1px solid var(--line);color:var(--txt);white-space:nowrap;
+         transition:border-color .1s,box-shadow .12s ease-out;}
+  .qchip:active,.qchip.press{border-color:var(--glow);
+         box-shadow:0 0 0 1.5px var(--glow), 0 0 14px 3px var(--glow);}
+  .qchip.add{color:var(--dim);padding:9px 11px;}
+  /* ---------- panels (trackpad / apps / clipboard / status) ---------- */
+  .panel{flex:1 1 auto;display:flex;flex-direction:column;gap:8px;min-height:0;}
+  .ptabs{display:flex;gap:7px;justify-content:center;flex-wrap:wrap;flex:0 0 auto;}
+  .ptab{font-size:13px;padding:8px 14px;border-radius:999px;background:var(--key);
+        border:1px solid var(--line);color:var(--dim);}
+  .ptab.on{background:var(--keytop);color:var(--txt);border-color:var(--glow);}
+  .pbody{flex:1 1 auto;min-height:0;display:flex;gap:9px;overflow:hidden;}
+  .pad{flex:1 1 auto;position:relative;touch-action:none;border:1px solid var(--line);border-radius:14px;
+       background:linear-gradient(180deg,rgba(127,127,127,.10),rgba(127,127,127,.03));
+       display:flex;align-items:center;justify-content:center;text-align:center;
+       color:var(--dim);font-size:12px;padding:14px;user-select:none;}
+  .pad.live{border-color:var(--glow);box-shadow:inset 0 0 24px -6px var(--glow);}
+  .pad.press{border-color:var(--glow);box-shadow:inset 0 0 24px -6px var(--glow);}
+  .padbtns{display:grid;grid-template-columns:1fr 1fr;gap:7px;width:212px;flex:0 0 auto;align-content:start;}
+  .pbtn{font-size:12.5px;padding:9px 8px;border-radius:10px;background:var(--key);
+        border:1px solid var(--line);color:var(--txt);}
+  .pbtn.on{background:var(--accent);border-color:var(--accent);color:var(--acctext);}
+  .apps{flex:1 1 auto;overflow-x:auto;display:flex;gap:10px;align-items:center;padding:4px 2px;}
+  .apps::-webkit-scrollbar{display:none;}
+  .app{flex:0 0 auto;width:92px;display:flex;flex-direction:column;align-items:center;gap:6px;
+       font-size:11px;color:var(--dim);text-align:center;}
+  .app img{width:52px;height:52px;border-radius:12px;}
+  .app.on{color:var(--txt);}
+  .app.on img{box-shadow:0 0 0 2px var(--glow);}
+  .col{flex:1 1 auto;display:flex;flex-direction:column;gap:8px;min-height:0;overflow-y:auto;}
+  .cliptext{font-size:13px;background:var(--input);border:1px solid var(--line);border-radius:10px;
+            padding:10px;max-height:150px;overflow:auto;white-space:pre-wrap;word-break:break-word;
+            -webkit-user-select:text;user-select:text;}
+  .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;align-content:start;}
+  .stat{background:var(--key);border:1px solid var(--line);border-radius:10px;padding:9px 12px;}
+  .stat b{display:block;font-size:16px;font-weight:600;}
+  .stat span{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;}
+  .recbtn{font-size:12px;padding:6px 10px;border-radius:8px;background:var(--key);
+          border:1px solid var(--line);color:var(--txt);}
+  .recbtn.on{background:var(--bad);border-color:var(--bad);color:#fff;animation:recdot 1s infinite;}
+  @keyframes recdot{0%,100%{opacity:1}50%{opacity:.45}}
+
+  .snipgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:8px;align-content:start;}
+  .snipcard{text-align:left;display:flex;flex-direction:column;gap:4px;min-height:58px;padding:10px 12px;
+            background:var(--key);border:1px solid var(--line);border-radius:10px;color:var(--txt);}
+  .snipcard b{font-size:14px;font-weight:600;}
+  .snipcard span{font-size:11px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .snipcard.add{color:var(--dim);justify-content:center;}
+  .snipcard:active,.snipcard.press{border-color:var(--glow);
+        box-shadow:0 0 0 1.5px var(--glow), 0 0 14px 3px var(--glow);}
+
+  .key.editmode{outline:1px dashed #5c6b80;outline-offset:-3px;}
+  .spacer{flex-grow:1;flex-basis:0;}
+
+  /* ---------- native keyboard panel ---------- */
+  #native{display:none;flex:0 0 auto;border-top:1px solid var(--line);background:var(--panel);padding:8px 10px;gap:8px;flex-direction:column;}
+  #native.show{display:flex;}
+  #nkb{width:100%;height:110px;resize:none;background:var(--input);border:1px solid var(--line);border-radius:10px;
+       padding:10px;font-size:17px;-webkit-user-select:text;user-select:text;color:var(--txt);}
+  .hint{font-size:11px;color:var(--dim);}
+
+  /* ---------- snippets ---------- */
+  #snips{display:none;gap:7px;padding:8px 10px;overflow-x:auto;border-top:1px solid var(--line);flex:0 0 auto;}
+  #snips.show{display:flex;}
+  .snip{white-space:nowrap;font-size:13px;padding:9px 13px;border-radius:9px;background:var(--key);border:1px solid var(--line);}
+
+  /* ---------- banner ---------- */
+  #banner{display:none;font-size:12.5px;padding:8px 12px;background:#3a2a12;color:#ffd28a;border-bottom:1px solid #5a4520;}
+  #banner.show{display:block;} #banner.bad{background:#3a1717;color:#ffb3b3;border-color:#5a2424;}
+  #banner button{margin-left:8px;text-decoration:underline;}
+
+  /* ---------- sheet ---------- */
+  #sheetwrap{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;z-index:50;align-items:flex-end;}
+  #sheetwrap.show{display:flex;}
+  #sheet{background:var(--panel);width:100%;max-height:88%;overflow-y:auto;border-top-left-radius:16px;
+         border-top-right-radius:16px;border-top:1px solid var(--line);padding:14px 14px calc(18px + env(safe-area-inset-bottom));}
+  #sheet h3{margin:0 0 12px;font-size:16px;font-weight:600;}
+  .fld{margin-bottom:11px;}
+  .fld label{display:block;font-size:11.5px;color:var(--dim);margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em;}
+  .fld input[type=text],.fld select,.fld textarea{width:100%;background:var(--input);border:1px solid var(--line);
+      border-radius:9px;padding:10px;font-size:15px;-webkit-user-select:text;user-select:text;color:var(--txt);}
+  .fld input[type=color]{width:100%;height:42px;background:var(--input);border:1px solid var(--line);border-radius:9px;padding:3px;}
+  .fld input[type=range]{width:100%;}
+  .fld textarea{height:70px;resize:vertical;}
+  .chips{display:flex;gap:7px;flex-wrap:wrap;}
+  .chip{font-size:14px;padding:9px 14px;border-radius:9px;background:var(--key);border:1px solid var(--line);}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .sheetbtns{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;}
+  .sheetbtns button{flex:1 1 40%;padding:13px;border-radius:10px;background:var(--key);border:1px solid var(--line);font-size:15px;}
+  .sheetbtns button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;}
+  .sheetbtns button.del{background:#3a1c1c;border-color:#6a3030;color:#ffb3b3;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+</style>
+</head>
+<body>
+
+<header>
+  <span class="dot" id="dot"></span>
+  <span id="status">connecting…</span>
+  <button class="hbtn" id="btnBar" title="quick bar">⌘</button>
+  <button class="hbtn" id="btnNative">⌨︎ iPad keys</button>
+  <button class="hbtn" id="btnEdit">✏️ Edit</button>
+  <button class="hbtn" id="btnMenu">⋯</button>
+</header>
+
+<div id="banner"></div>
+<div id="tabs"></div>
+<div id="board"></div>
+<div id="snips"></div>
+<div id="native">
+  <textarea id="nkb" placeholder="Type here with the iPad keyboard (autocorrect, emoji, dictation all work) → it appears on your Mac."
+            autocapitalize="sentences" autocomplete="off" spellcheck="true"></textarea>
+  <div class="hint">Every change is streamed to the Mac. Tap ⌨︎ iPad keys again to hide.</div>
+</div>
+
+<div id="sheetwrap"><div id="sheet"></div></div>
+
+<script>
+/* =========================================================================
+   MacSpace — your iPad as a keyboard, trackpad and remote for the Mac
+   Custom layout engine. Sends key events to the Mac bridge (Swift) over HTTP.
+   ========================================================================= */
+
+const TOKEN = new URLSearchParams(location.search).get('t') || localStorage.getItem('ipadkb:token') || '';
+if (TOKEN) localStorage.setItem('ipadkb:token', TOKEN);
+const ORIGIN = location.origin;
+
+/* ---------- themes ---------- */
+const THEMES = [
+  { id:'graphite', name:'Graphite (iPad dark)', vars:{
+      '--bg':'#1c1c1e','--panel':'#2c2c2e','--key':'#3a3a3c','--keytop':'#3a3a3c','--line':'#3a3a3c',
+      '--txt':'#ffffff','--dim':'#8e8e93','--modtop':'#333336','--modtext':'#ffffff',
+      '--accent':'#0a84ff','--accbot':'#0a84ff','--acctext':'#ffffff',
+      '--dangertop':'#ff453a','--dangerbot':'#ff453a','--input':'#48484a',
+      '--radius':'9px','--gap':'7px','--keyfont':'20px'}},
+  { id:'midnight', name:'Midnight blue', vars:{
+      '--bg':'#0b1220','--panel':'#131c2e','--key':'#1d2a40','--keytop':'#24344e','--line':'#2a3b56',
+      '--txt':'#e8eefc','--dim':'#7f8ea8','--modtop':'#182338','--modtext':'#9fb3d4',
+      '--accent':'#4c8dff','--accbot':'#2f6ad0','--acctext':'#ffffff',
+      '--dangertop':'#c0392b','--dangerbot':'#8e2a20','--input':'#0f1728',
+      '--radius':'10px','--gap':'7px','--keyfont':'19px'}},
+  { id:'paper', name:'Paper (light)', vars:{
+      '--bg':'#f2f2f7','--panel':'#ffffff','--key':'#ffffff','--keytop':'#ffffff','--line':'#d8d8dd',
+      '--txt':'#1c1c1e','--dim':'#8a8a8e','--modtop':'#e3e3e8','--modtext':'#3a3a3c',
+      '--accent':'#007aff','--accbot':'#0062cc','--acctext':'#ffffff',
+      '--dangertop':'#ff3b30','--dangerbot':'#d92b21','--input':'#e9e9ee',
+      '--radius':'8px','--gap':'7px','--keyfont':'20px'}},
+  { id:'terminal', name:'Terminal green', vars:{
+      '--bg':'#0a0f0a','--panel':'#101810','--key':'#16231a','--keytop':'#16231a','--line':'#1e3324',
+      '--txt':'#7dff9b','--dim':'#4f7a5c','--modtop':'#12201a','--modtext':'#59d97d',
+      '--accent':'#1f9d4d','--accbot':'#157a3a','--acctext':'#eafff0',
+      '--dangertop':'#8e2a20','--dangerbot':'#6a1f18','--input':'#0f1a12',
+      '--radius':'6px','--gap':'5px','--keyfont':'19px'}},
+  { id:'highcontrast', name:'High contrast', vars:{
+      '--bg':'#000000','--panel':'#121212','--key':'#1e1e1e','--keytop':'#1e1e1e','--line':'#ffffff',
+      '--txt':'#ffffff','--dim':'#c8c8c8','--modtop':'#000000','--modtext':'#ffffff',
+      '--accent':'#ffd60a','--accbot':'#ffd60a','--acctext':'#000000',
+      '--dangertop':'#ff453a','--dangerbot':'#ff453a','--input':'#2a2a2a',
+      '--radius':'4px','--gap':'9px','--keyfont':'22px'}},
+  { id:'spa', name:'WebsiteSpa blue', vars:{
+      '--bg':'#071a2b','--panel':'#0d2740','--key':'#123a5c','--keytop':'#154868','--line':'#1d5a80',
+      '--txt':'#eaf6ff','--dim':'#7fb3d5','--modtop':'#0e2f4a','--modtext':'#9fd0ea',
+      '--accent':'#00c2a8','--accbot':'#00a08a','--acctext':'#ffffff',
+      '--dangertop':'#ff5c5c','--dangerbot':'#c93a3a','--input':'#0a2236',
+      '--radius':'12px','--gap':'8px','--keyfont':'20px'}},
+];
+
+const THEME_COLORS = [
+  ['--bg','Background'], ['--panel','Bars & panels'], ['--key','Key face'],
+  ['--keytop','Key face (top shade)'], ['--modtop','Modifier keys'], ['--line','Key border'],
+  ['--txt','Text / labels'], ['--modtext','Modifier text'],
+  ['--accent','Accent (pressed)'], ['--glow','Press glow'], ['--input','Text fields'],
+];
+const THEME_SIZES = [
+  ['--keyh','Key height (× key width)',0.5,2.2,0.05,''],
+  ['--pulse','Press pulse speed',60,500,10,'ms'],
+  ['--radius','Key corner radius',2,24,1,'px'],
+  ['--gap','Gap between keys',2,16,1,'px'],
+  ['--keyfont','Key label size',12,36,1,'px'],
+];
+
+function themeVars(){
+  const base = (THEMES.find(t => t.id === state.theme.id) || THEMES[0]).vars;
+  const v = Object.assign({}, base, state.theme.over || {});
+  if(!v['--glow']) v['--glow'] = v['--accent'];   // press glow follows the theme's accent
+  return v;
+}
+function applyTheme(){
+  const v = themeVars(), root = document.documentElement;
+  Object.keys(v).forEach(k => root.style.setProperty(k, v[k]));
+}
+function currentVar(name){
+  return themeVars()[name] || getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+function toHex(v){
+  v = String(v || '').trim();
+  if(/^#[0-9a-f]{6}$/i.test(v)) return v.toLowerCase();
+  if(/^#[0-9a-f]{3}$/i.test(v)) return ('#'+v[1]+v[1]+v[2]+v[2]+v[3]+v[3]).toLowerCase();
+  return '#000000';
+}
+function setOverride(tok, val){
+  state.theme.over = state.theme.over || {};
+  state.theme.over[tok] = val;
+  saveTheme(); applyTheme();
+}
+function saveTheme(){ localStorage.setItem('ipadkb:theme', JSON.stringify(state.theme)); }
+
+/* ---------- default key helpers ---------- */
+const K = (l, k, m, o={}) => Object.assign({l, a:Object.assign({k}, m?{m}:{})}, o);
+const M = (l, name, o={}) => Object.assign({l, a:{m:name}, w:1, st:'mod'}, o);
+const L = (l, layer, o={}) => Object.assign({l, a:{layer}}, o);
+const T = (l, u, o={}) => Object.assign({l, a:{u}}, o);
+/** switches the panel above the keys (trackpad / apps / clipboard / status / snippets) */
+const P = (l, panel, o={}) => Object.assign({l, a:{panel}}, o);
+
+/* ---------- default snippets: text you type with one tap ---------- */
+const DEFAULT_SNIPS = [
+  { l:'✉︎ email',  u:'hello@websitespa.net' },
+  { l:'— Mohind',  u:'— Mohind' },
+  { l:'example',   u:'This text was typed on the Mac with one tap on the iPad.' },
+];
+
+const TOOLS = (extra) => ([
+  K('esc','escape',null,{w:1.3, st:'mod'}),
+  K('⌘','',['cmd'],{w:1.3, st:'mod', a:{layer:'cmd'}, l:'⌘'}),
+]);
+
+const MODROW = () => ([
+  M('⌃','control'), M('⌥','option'), M('⌘','cmd'),
+  K('space','space',null,{w:4.5}),
+  K('←','left'), K('↑','up'), K('↓','down'), K('→','right'),
+]);
+
+const DEFAULT_LAYOUTS = [{
+  name: "Mohind's iPad",
+  layers: [
+    { id:'main', label:'⌨ Main', rows: [
+      [ K('esc','escape',null,{w:1.1,st:'mod'}), L('⌘ cmds','cmd',{w:1.5,st:'mod'}),
+        L('#123','sym',{w:1.1,st:'mod'}), L('Fx','fn',{w:1,st:'mod'}), L('↕ nav','nav',{w:1.1,st:'mod'}),
+        P('✂︎ snips','snips',{w:1.2,st:'mod'}), {h:0.5} ],
+      [ K('`','`',null,{t:'~'}), K('1','1',null,{t:'!'}), K('2','2',null,{t:'@'}), K('3','3',null,{t:'#'}),
+        K('4','4',null,{t:'$'}), K('5','5',null,{t:'%'}), K('6','6',null,{t:'^'}),
+        K('7','7',null,{t:'&'}), K('8','8',null,{t:'*'}), K('9','9',null,{t:'('}), K('0','0',null,{t:')'}),
+        K('-','-',null,{t:'_'}), K('=','=',null,{t:'+'}), K('⌫','delete',null,{w:2,s:'DEL'}) ],
+      [ K('⇥','tab',null,{w:1.5}), K('Q','q'), K('W','w'), K('E','e'), K('R','r'), K('T','t'), K('Y','y'),
+        K('U','u'), K('I','i'), K('O','o'), K('P','p'), K('[','[',null,{t:'{'}), K(']',']',null,{t:'}'}), K('\\','\\',null,{w:1.5,t:'|'}) ],
+      [ K('⇪','',null,{w:1.75,st:'mod',s:'caps',a:{caps:true}}), K('A','a'), K('S','s'), K('D','d'), K('F','f'), K('G','g'), K('H','h'),
+        K('J','j'), K('K','k'), K('L','l'), K(';',';',null,{t:':'}), K("'","'",null,{t:'"'}), K('⏎','return',null,{w:2.25}) ],
+      [ M('⇧','shift',{w:2.25}), K('Z','z'), K('X','x'), K('C','c'), K('V','v'), K('B','b'), K('N','n'),
+        K('M','m'), K(',',',',null,{t:'<'}), K('.','.',null,{t:'>'}), K('/','/',null,{t:'?'}),
+        K('⌫','delete',null,{w:2.75,s:'DEL'}) ],
+      [ M('⌃','control',{w:1.25}), M('⌥','option',{w:1.25}), M('⌘','cmd',{w:1.5}),
+        K('space','space',null,{w:7}),
+        K('←','left'), K('↑','up'), K('↓','down'), K('→','right') ],
+    ]},
+    { id:'sym', label:'#123', rows: [
+      [ K('esc','escape',null,{w:1.1,st:'mod'}), L('⌘ cmds','cmd',{w:1.5,st:'mod'}),
+        L('⌨ main','main',{w:1.3,st:'mod'}), L('Fx','fn',{w:1,st:'mod'}), L('↕ nav','nav',{w:1.1,st:'mod'}), {h:0.5} ],
+      [ K('~','~',null,{t:'`'}), K('!','!',null,{t:'1'}), K('@','@',null,{t:'2'}), K('#','#',null,{t:'3'}),
+        K('$','$',null,{t:'4'}), K('%','%',null,{t:'5'}), K('^','^',null,{t:'6'}),
+        K('&','&',null,{t:'7'}), K('*','*',null,{t:'8'}), K('(','(',null,{t:'9'}), K(')',')',null,{t:'0'}),
+        K('_','_',null,{t:'-'}), K('+','+',null,{t:'='}), K('⌫','delete',null,{w:1.5}) ],
+      [ K('⇥','tab',null,{w:1.5}), K('{','{',null,{t:'['}), K('}','}',null,{t:']'}), K('|','|',null,{t:'\\'}),
+        K('\\','\\',null,{t:'\\'}), K(':',':',null,{t:';'}), K('"','"',null,{t:"'"}),
+        K('<','<',null,{t:','}), K('>','>',null,{t:'.'}), K('?','?',null,{t:'/'}), K('`','`',null,{t:'~'}),
+        K('[','['), K(']',']'), K('⏎','return',null,{w:1.5}) ],
+      [ M('⇧','shift',{w:1.75}), T('€','€'), T('£','£'), T('¥','¥'), T('°','°'), T('•','•'), T('—','—'),
+        T('–','–'), T('…','…'), T('“','“'), T('”','”'), T('’','’'), K('=','=',null,{w:1.75,t:'+'}) ],
+      MODROW(),
+    ]},
+    { id:'fn', label:'Fx', rows: [
+      [ K('esc','escape',null,{w:1.1,st:'mod'}), L('⌘ cmds','cmd',{w:1.5,st:'mod'}),
+        L('⌨ main','main',{w:1.3,st:'mod'}), L('#123','sym',{w:1.1,st:'mod'}), L('↕ nav','nav',{w:1.1,st:'mod'}), {h:0.5} ],
+      [ K('F1','f1',['fn'],{s:'☀︎−'}), K('F2','f2',['fn'],{s:'☀︎+'}), K('F3','f3',['fn'],{s:'⌘Tab'}),
+        K('F4','f4',['fn']), K('F5','f5',['fn'],{s:'🎤'}), K('F6','f6',['fn'],{s:'🌙'}),
+        K('F7','f7',['fn'],{s:'⏮'}), K('F8','f8',['fn'],{s:'⏯'}), K('F9','f9',['fn'],{s:'⏭'}),
+        K('F10','f10',['fn'],{s:'🔇'}), K('F11','f11',['fn'],{s:'🔉'}), K('F12','f12',['fn'],{s:'🔊'}) ],
+      [ K('F13','f13'), K('F14','f14'), K('F15','f15'), K('F16','f16'), K('F17','f17'), K('F18','f18'),
+        K('F19','f19'), K('F20','f20'), K('⌦','forwarddelete',null,{s:'del'}),
+        K('⇱','home',null,{s:'home'}), K('⇞','pageup',null,{s:'pg↑'}), K('⇟','pagedown',null,{s:'pg↓'}),
+        K('⇲','end',null,{s:'end'}) ],
+      [ M('⇧','shift',{w:1.75}), K('A','a'), K('S','s'), K('D','d'), K('F','f'), K('G','g'), K('H','h'),
+        K('J','j'), K('K','k'), K('L','l'), K(';',';',null,{t:':'}), K("'","'",null,{t:'"'}), K('⏎','return',null,{w:1.75}) ],
+      MODROW(),
+    ]},
+    { id:'nav', label:'↕ nav', rows: [
+      [ K('esc','escape',null,{w:1.1,st:'mod'}), L('⌘ cmds','cmd',{w:1.5,st:'mod'}),
+        L('⌨ main','main',{w:1.3,st:'mod'}), L('#123','sym',{w:1.1,st:'mod'}), L('Fx','fn',{w:1,st:'mod'}), {h:0.5} ],
+      [ K('⇱','home'), K('⇲','end'), K('⇞','pageup'), K('⇟','pagedown'), K('⌦','forwarddelete'),
+        K('⏎','return'), K('⇥','tab'), K('⇤/⇥','',['shift'],{a:{k:'tab',m:['shift']},l:'⇤'}),
+        K('⌫','delete'), K('⎋','escape') ],
+      [ K('⇧','',['shift'],{a:{k:'left',m:['shift']},l:'⇧←'}), K('↑','up',null,{w:1.4}),
+        K('⇧','',['shift'],{a:{k:'right',m:['shift']},l:'⇧→'}),
+        K('⌥','',['option'],{a:{k:'up',m:['option']},l:'⌥↑',st:'mod'}),
+        K('⇞','pageup',null,{l:'⇱',s:'pg'}), K('⇟','pagedown',null,{l:'⇲',s:'pg'}),
+        K('⌘↑','up',['cmd'],{l:'⌘↑'}), K('⌘↓','down',['cmd'],{l:'⌘↓'}) ],
+      [ K('','',null,{w:1.75,st:'mod',l:'',a:{}}), K('⇧←','',['shift'],{a:{k:'left',m:['shift']},l:'⇧←'}),
+        K('↑','up',null,{w:1.4}), K('⇧→','',['shift'],{a:{k:'right',m:['shift']},l:'⇧→'}),
+        K('⌘←','left',['cmd'],{l:'⌘←'}), K('⌘→','right',['cmd'],{l:'⌘→'}),
+        K('⌘⌫','delete',['cmd'],{l:'⌘⌫',s:'kill ln'}), K('⌘⌦','forwarddelete',['cmd'],{l:'⌘⌦'}) ],
+      [ M('⌃','control'), M('⌥','option'), M('⌘','cmd'), K('space','space',null,{w:4.5}),
+        K('←','left'), K('↑','up'), K('↓','down'), K('→','right') ],
+    ]},
+    { id:'cmd', label:'⌘ shortcuts', rows: [
+      [ K('esc','escape',null,{w:1.1,st:'mod'}), L('⌨ main','main',{w:1.3,st:'mod'}),
+        L('#123','sym',{w:1.1,st:'mod'}), L('Fx','fn',{w:1,st:'mod'}), L('↕ nav','nav',{w:1.1,st:'mod'}), {h:0.5} ],
+      [ K('⌘C','c',['cmd']), K('⌘V','v',['cmd']), K('⌘X','x',['cmd'],{s:'cut'}), K('⌘A','a',['cmd'],{s:'all'}),
+        K('⌘Z','z',['cmd'],{s:'undo'}), K('⌘⇧Z','z',['cmd','shift'],{l:'⌘⇧Z',s:'redo'}),
+        K('⌘F','f',['cmd'],{s:'find'}), K('⌘S','s',['cmd'],{s:'save'}), K('⌘W','w',['cmd'],{s:'close'}),
+        K('⌘Q','q',['cmd'],{s:'quit',st:'danger'}) ],
+      [ K('⌘⇥','tab',['cmd'],{l:'⌘⇥',s:'switch'}), K('⌘`','`',['cmd'],{s:'next win'}),
+        K('⌘␣','space',['cmd'],{l:'⌘␣',s:'spotlight'}), K('⌘N','n',['cmd'],{s:'new'}),
+        K('⌘T','t',['cmd'],{s:'new tab'}), K('⌘R','r',['cmd'],{s:'reload'}), K('⌘L','l',['cmd'],{s:'url'}),
+        K('⌘M','m',['cmd'],{s:'min'}), K('⌘,',';',['cmd'],{l:'⌘,',s:'prefs'}),
+        K('⌘⇧4','4',['cmd','shift'],{l:'⌘⇧4',s:'shot'}),
+        K('⌘⇧5','5',['cmd','shift'],{l:'⌘⇧5',s:'record'}) ],
+      [ K('⌃↑','up',['control'],{l:'⌃↑',s:'mission'}), K('⌃↓','down',['control'],{l:'⌃↓',s:'apps'}),
+        K('⌃→','right',['control'],{l:'⌃→',s:'space›'}), K('⌃←','left',['control'],{l:'⌃←',s:'‹space'}),
+        K('⌘⌃Q','q',['cmd','control'],{l:'⌘⌃Q',s:'lock',st:'danger'}),
+        K('⌘⇧.','.',['cmd','shift'],{l:'⌘⇧.',s:'hidden'}),
+        K('⌘+','=',['cmd'],{l:'⌘+',s:'zoom in'}), K('⌘−','-',['cmd'],{l:'⌘−',s:'zoom out'}),
+        K('⌘0','0',['cmd'],{s:'reset'}), K('⌘⌥⎋','escape',['cmd','option'],{l:'⌘⌥⎋',s:'force quit',st:'danger'}) ],
+      [ M('⌃','control'), M('⌥','option'), M('⌘','cmd'), K('space','space',null,{w:4.5}),
+        K('←','left'), K('↑','up'), K('↓','down'), K('→','right') ],
+    ]},
+  ]
+}];
+
+/* ---------- quick bar: the shortcuts you fire all day, parked above the keys ---------- */
+const DEFAULT_QUICK = [
+  {l:'⌘C',k:'c',m:['cmd']}, {l:'⌘V',k:'v',m:['cmd']}, {l:'⌘X',k:'x',m:['cmd']},
+  {l:'⌘Z',k:'z',m:['cmd']}, {l:'⇧⌘Z',k:'z',m:['cmd','shift']}, {l:'⌘A',k:'a',m:['cmd']},
+  {l:'⌘S',k:'s',m:['cmd']}, {l:'⌘F',k:'f',m:['cmd']}, {l:'⌘W',k:'w',m:['cmd']},
+  {l:'⌘Q',k:'q',m:['cmd']}, {l:'⌘⇥',k:'tab',m:['cmd']}, {l:'⌘␣',k:'space',m:['cmd']},
+  {l:'⌘N',k:'n',m:['cmd']}, {l:'⌘T',k:'t',m:['cmd']}, {l:'⇧⌘4',k:'4',m:['cmd','shift']},
+  {l:'⌘⌃Q',k:'q',m:['cmd','control']},
+];
+
+/* ---------- state ---------- */
+let state = {
+  layouts: [],
+  layoutIndex: 0,
+  layer: 'main',
+  armed: new Set(),
+  locked: new Set(),
+  edit: false,
+  native: false,
+  snipsOpen: false,
+  snippets: [],
+  theme: { id:'graphite', over:{} },
+  quick: [],
+  quickOn: true,
+  panel: 'pad',
+  dragLock: false,
+  naturalScroll: false,
+  padGain: 1.6,
+  rec: null,
+  latency: null,
+  caps: false,
+};
+
+/* is a capital letter coming next? shift armed/locked, or caps lock on */
+function capsActive(){
+  return state.caps || state.armed.has('shift') || state.locked.has('shift');
+}
+
+/* Bump whenever the built-in layout changes shape: an iPad that opened an older
+   build must not keep serving its stale (e.g. missing-row) layout from storage. */
+const LAYOUT_VERSION = 5;
+
+function loadStore(){
+  const fresh = () => JSON.parse(JSON.stringify(DEFAULT_LAYOUTS));
+  try{
+    const raw = JSON.parse(localStorage.getItem('ipadkb:layouts') || 'null');
+    if(raw && raw.v === LAYOUT_VERSION && Array.isArray(raw.layouts) && raw.layouts.length){
+      state.layouts = raw.layouts;
+    } else {
+      state.layouts = fresh();
+      localStorage.setItem('ipadkb:layouts', JSON.stringify({ v: LAYOUT_VERSION, layouts: state.layouts }));
+      state.layoutIndex = 0;
+    }
+  }catch(e){ state.layouts = fresh(); }
+  state.layoutIndex = Math.min(+(localStorage.getItem('ipadkb:index') || 0), state.layouts.length-1) || 0;
+  const rawSnips = localStorage.getItem('ipadkb:snips');
+  if(rawSnips === null){ state.snippets = JSON.parse(JSON.stringify(DEFAULT_SNIPS)); }
+  else { try{ state.snippets = JSON.parse(rawSnips); }catch(e){ state.snippets = []; } }
+  if(!Array.isArray(state.snippets)) state.snippets = [];
+  try{
+    const t = JSON.parse(localStorage.getItem('ipadkb:theme') || 'null');
+    if(t && t.id) state.theme = { id: t.id, over: t.over || {} };
+  }catch(e){}
+  try{
+    const q = JSON.parse(localStorage.getItem('ipadkb:quick') || 'null');
+    state.quick = Array.isArray(q) ? q : JSON.parse(JSON.stringify(DEFAULT_QUICK));
+  }catch(e){ state.quick = JSON.parse(JSON.stringify(DEFAULT_QUICK)); }
+  state.quickOn = localStorage.getItem('ipadkb:quickon') !== '0';
+}
+function saveStore(){
+  localStorage.setItem('ipadkb:layouts', JSON.stringify({ v: LAYOUT_VERSION, layouts: state.layouts }));
+  localStorage.setItem('ipadkb:index', String(state.layoutIndex));
+  localStorage.setItem('ipadkb:snips', JSON.stringify(state.snippets));
+  localStorage.setItem('ipadkb:quick', JSON.stringify(state.quick));
+  localStorage.setItem('ipadkb:quickon', state.quickOn ? '1' : '0');
+}
+const layout = () => state.layouts[state.layoutIndex];
+
+/* ---------- transport ---------- */
+let queue = [], busy = false, fails = 0, ax = true;
+function post(path, body){
+  queue.push({path, body});
+  pump();
+}
+async function pump(){
+  if(busy) return;
+  busy = true;
+  while(queue.length){
+    const item = queue.shift();
+    try{
+      const r = await fetch(ORIGIN + item.path + '?t=' + encodeURIComponent(TOKEN), {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(item.body)
+      });
+      if(r.status === 401){ badToken(); }
+      else { fails = 0; setDot('on','connected'); }
+    }catch(e){
+      fails++; setDot('', 'Mac unreachable');
+      if(fails === 3) showBanner('Can\'t reach the Mac bridge. Make sure the bridge is running and you\'re on the same Wi-Fi.', true);
+    }
+  }
+  busy = false;
+}
+
+/* ---------- sending ---------- */
+function sendKey(k, mods, action){
+  const m = mergeMods(mods);
+  if(state.rec) state.rec.push({k, m});
+  post('/key', {k, m, d: action || 'tap'});
+  clearArmed();
+}
+
+/* replay a recorded macro: staggered so the Mac sees the order */
+function playSeq(seq){
+  (seq || []).forEach((s, i) => setTimeout(() => post('/key', {k: s.k, m: s.m || [], d: 'tap'}), i * 30));
+}
+
+function stopRecording(){
+  const seq = state.rec || [];
+  state.rec = null;
+  if(!seq.length){ render(); return; }
+  openSheet((sheet, close) => {
+    sheet.innerHTML = '<h3>Save macro · ' + seq.length + ' keys</h3>';
+    const f = div('fld','<label>Button label</label>');
+    const l = document.createElement('input'); l.type = 'text'; l.value = 'macro ' + (state.quick.length + 1);
+    f.appendChild(l); sheet.appendChild(f);
+    const steps = seq.map(s => (s.m || []).map(m => m.slice(0,3)).join('+') + (s.k.length > 1 ? ' ' + s.k : ' ' + s.k.toUpperCase()));
+    const p = div('fld','<label>Recorded</label><div class="hint">' + esc(steps.join(' → ')) + '</div>');
+    sheet.appendChild(p);
+    const b = document.createElement('div'); b.className='sheetbtns';
+    const cancel = document.createElement('button'); cancel.textContent = 'Discard';
+    cancel.onclick = () => { close(); render(); };
+    const save = document.createElement('button'); save.className = 'primary'; save.textContent = 'Save to quick bar';
+    save.onclick = () => { state.quick.push({l: l.value || 'macro', seq}); saveStore(); close(); render(); };
+    b.append(cancel, save); sheet.appendChild(b);
+  });
+}
+function sendText(s, mode){
+  if(!s) return;
+  post('/text', {s, mode: mode || 'type'});
+  clearArmed();
+}
+function mergeMods(extra){
+  const set = new Set();
+  state.locked.forEach(x => set.add(x));
+  state.armed.forEach(x => set.add(x));
+  (extra || []).forEach(x => set.add(x));
+  return [...set];
+}
+function clearArmed(){ if(state.armed.size){ state.armed.clear(); render(); } }
+
+/* ---------- actions ---------- */
+function doAction(a, keyEl){
+  if(!a) return;
+  if(a.layer){ state.layer = a.layer; render(); return; }
+  if(a.panel){ state.panel = a.panel; render(); return; }
+  if(a.caps){
+    state.caps = !state.caps;          // optimistic, then corrected by the bridge
+    render();
+    fetch(ORIGIN + '/key?t=' + encodeURIComponent(TOKEN), {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({k:'capslock'})
+    }).then(r => r.json()).then(d => {
+      if(d && typeof d.caps === 'boolean' && d.caps !== state.caps){ state.caps = d.caps; render(); }
+    }).catch(()=>{});
+    return;
+  }
+  if(a.m){ // modifier: tap = arm, double tap = lock
+    const n = a.m;
+    const now = Date.now();
+    if(keyEl && keyEl._lastTap && now - keyEl._lastTap < 320){
+      keyEl._lastTap = 0;
+      if(state.locked.has(n)){ state.locked.delete(n); state.armed.delete(n); }
+      else { state.locked.add(n); state.armed.delete(n); }
+      render(); return;
+    }
+    if(keyEl) keyEl._lastTap = now;
+    if(!state.locked.has(n)){
+      state.armed.has(n) ? state.armed.delete(n) : state.armed.add(n);
+    }
+    render(); return;
+  }
+  if(a.k !== undefined && a.k !== ''){
+    sendKey(a.k, a.m, a.d);
+    flash(keyEl); return;
+  }
+  if(a.u !== undefined){
+    sendText(a.u, 'type');
+    flash(keyEl); return;
+  }
+}
+
+/* ---------- rendering ---------- */
+function keyClass(k){
+  let c = 'key';
+  if(k.st === 'mod') c += ' mod';
+  if(k.st === 'accent') c += ' accent';
+  if(k.st === 'danger') c += ' danger';
+  if(k.a && k.a.m){
+    const n = k.a.m;
+    if(state.locked.has(n)) c += ' active locked';
+    else if(state.armed.has(n)) c += ' active';
+  }
+  if(k.a && k.a.caps && state.caps) c += ' active locked';
+  if(state.edit) c += ' editmode';
+  return c;
+}
+
+/* ---------- press & hold behaviour (mirrors a real keyboard) ---------- */
+const REPEAT_DELAY = 420;   // hold this long before a key starts repeating
+const REPEAT_MS = 55;       // repeat rate (~18/s, close to macOS default)
+const MOD_HOLD = 230;       // hold a modifier this long → it is held, not latched
+const heldMods = new Set(); // modifiers currently held down on the Mac
+
+function releaseHeldMods(){
+  heldMods.forEach(m => post('/key', {k: m, m: [], d: 'up'}));
+  heldMods.clear();
+}
+
+function buildKey(k, row){
+  const el = document.createElement('button');
+  el.className = keyClass(k);
+  el.style.flexGrow = String(k.w || 1);
+  el.dataset.w = String(k.w || 1);
+  if(k.t){ el.classList.add('hastop'); const t = document.createElement('div'); t.className='top'; t.textContent = k.t; el.appendChild(t); }
+  const lbl = document.createElement('div');
+  lbl.className = 'lbl';
+  // letter keys show their live case: lowercase normally, uppercase when
+  // shift is armed/locked or caps lock is on (matches what the Mac will type)
+  const ch = k.a && typeof k.a.k === 'string' ? k.a.k : null;
+  const isLetter = ch && /^[a-z]$/.test(ch);
+  const autoLabel = !k.l || String(k.l).toLowerCase() === ch;
+  lbl.textContent = (isLetter && autoLabel) ? (capsActive() ? ch.toUpperCase() : ch)
+                                            : (k.l !== undefined ? k.l : '');
+  el.appendChild(lbl);
+  if(k.s){ const s = document.createElement('div'); s.className='sub'; s.textContent = k.s; el.appendChild(s); }
+  if(k.bg || k.fg){
+    el.classList.add('custom');
+    if(k.bg) el.style.setProperty('--kbg', k.bg);
+    if(k.fg) el.style.setProperty('--kfg', k.fg);
+  }
+
+  const a = k.a || {};
+  const isMod = !!a.m;
+  const repeatable = !isMod && !a.caps && !a.layer && !a.panel
+                     && typeof a.k === 'string' && a.k !== '';
+  let sentOnDown = false, modHeld = false, holdT = null, repT = null;
+
+  const stopTimers = () => { clearTimeout(holdT); clearInterval(repT); holdT = repT = null; };
+
+  el.addEventListener('pointerdown', () => {
+    if(state.edit) return;                       // in edit mode a tap edits, never types
+    sentOnDown = false;
+    if(isMod){
+      el.classList.add('press');
+      holdT = setTimeout(() => {                 // hold = really hold it (like a key)
+        modHeld = true;
+        heldMods.add(a.m);
+        post('/key', {k: a.m, m: [], d: 'down'});
+      }, MOD_HOLD);
+    } else if(repeatable){
+      sentOnDown = true;                         // type on press, like a real keyboard
+      doAction(a, el);
+      holdT = setTimeout(() => {
+        repT = setInterval(() => doAction(a, el), REPEAT_MS);
+      }, REPEAT_DELAY);
+    }
+  });
+
+  const release = () => {
+    stopTimers();
+    el.classList.remove('press');
+    if(isMod && modHeld){
+      modHeld = false;
+      heldMods.delete(a.m);
+      post('/key', {k: a.m, m: [], d: 'up'});
+    }
+  };
+  el.addEventListener('pointerup', release);
+  el.addEventListener('pointercancel', release);
+  el.addEventListener('pointerleave', release);
+
+  el.addEventListener('click', () => {
+    if(state.edit){ openKeyEditor(row, k); return; }
+    if(sentOnDown){ sentOnDown = false; return; }  // already typed on press
+    doAction(a, el);                              // modifiers latch here, on a quick tap
+  });
+  return el;
+}
+
+function render(){
+  // tabs
+  const tabs = document.getElementById('tabs');
+  tabs.innerHTML = '';
+  layout().layers.forEach(l => {
+    const b = document.createElement('button');
+    b.className = 'tab' + (l.id === state.layer ? ' on' : '');
+    b.textContent = l.label || l.id;
+    b.onclick = () => { state.layer = l.id; render(); };
+    tabs.appendChild(b);
+  });
+  if(state.layer === 'snips'){
+    const b = document.createElement('button');
+    b.className = 'tab on'; b.textContent = '✂︎ snippets';
+    tabs.appendChild(b);
+  }
+  if(state.edit){
+    const b = document.createElement('button');
+    b.className = 'tab'; b.textContent = '＋ layer';
+    b.onclick = addLayer; tabs.appendChild(b);
+  }
+
+  // board
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+  const layer = layout().layers.find(l => l.id === state.layer) || layout().layers[0];
+
+  if(state.layer === 'snips'){
+    renderSnippets(board);
+  } else {
+    renderPanel(board);
+    renderQuickBar(board);
+    layer.rows.forEach(row => {
+      const r = document.createElement('div');
+      const meta = row.find(x => x && x.h !== undefined);
+      r.className = 'row' + (meta && meta.h < 0.75 ? ' tools' : '');
+      if(meta) r.dataset.h = meta.h;
+      row.filter(k => k !== meta).forEach(k => r.appendChild(buildKey(k, row)));
+      if(state.edit){
+        const add = document.createElement('button');
+        add.className = 'key'; add.style.flexGrow = '0.7'; add.dataset.w = '0.7';
+        add.innerHTML = '<div class="lbl">＋</div>';
+        add.onclick = () => { row.push({l:'new', a:{k:'a'}}); saveStore(); render(); };
+        r.appendChild(add);
+      }
+      board.appendChild(r);
+    });
+    if(state.edit){
+      const bar = document.createElement('div');
+      bar.className = 'row'; bar.style.flex = '0 0 46px';
+      const mk = (t, fn, cls) => { const b=document.createElement('button'); b.className='key '+(cls||''); b.innerHTML='<div class="lbl">'+t+'</div>'; b.onclick=fn; return b; };
+      bar.appendChild(mk('＋ row', () => { layer.rows.push([{l:'new',a:{k:'a'}}]); saveStore(); render(); }));
+      bar.appendChild(mk('duplicate layout', duplicateLayout));
+      bar.appendChild(mk('export', exportLayouts));
+      bar.appendChild(mk('import', importLayouts));
+      bar.appendChild(mk('reset all', resetAll, 'danger'));
+      board.appendChild(bar);
+    }
+  }
+
+  // native panel + snippets strip
+  document.getElementById('native').classList.toggle('show', state.native);
+  document.getElementById('btnNative').classList.toggle('on', state.native);
+  document.getElementById('btnEdit').classList.toggle('on', state.edit);
+  document.getElementById('btnEdit').textContent = state.edit ? '✓ Done' : '✏️ Edit';
+  renderSnipStrip();
+  sizeRows();
+}
+
+/* Row height = key width and uniform key widths, so columns line up like a real
+   keyboard. Called after every render + on resize. */
+function sizeRows(){
+  const board = document.getElementById('board');
+  const rows = [...board.querySelectorAll('.row')];
+  if(!rows.length) return;
+  const cs = getComputedStyle(board);
+  const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+  const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+  const gap = parseFloat(currentVar('--gap')) || 7;
+  const info = rows.map(r => {
+    const kids = [...r.children];
+    let units = 0;
+    kids.forEach(c => { units += parseFloat(c.dataset.w || '1'); });
+    return {
+      el: r, kids, units,
+      hf: parseFloat(r.dataset.h || '1'),
+      stretch: r.classList.contains('tools'),   // tool strip keeps filling the width
+    };
+  });
+  const maxUnits = Math.max(...info.map(i => i.units), 1);
+  const maxKids = Math.max(...info.map(i => i.kids.length), 1);
+  const keyUnit = (board.clientWidth - padX - gap * (maxKids - 1)) / maxUnits;
+  const keyh = parseFloat(currentVar('--keyh')) || 1;
+  const qb = board.querySelector('.quickbar');
+  const qbH = qb ? qb.getBoundingClientRect().height + gap : 0;
+  const availH = board.clientHeight - padY - gap * (rows.length - 1) - qbH;
+  const fit = availH / info.reduce((s, i) => s + i.hf, 0);
+  const rowH = Math.max(26, Math.min(keyUnit * keyh, fit));
+  info.forEach(i => {
+    i.el.style.height = Math.round(rowH * i.hf) + 'px';
+    if(i.stretch) return;
+    i.el.style.justifyContent = 'center';
+    i.kids.forEach(c => {
+      const w = parseFloat(c.dataset.w || '1');
+      c.style.flex = '0 0 ' + (keyUnit * w + (w - 1) * gap).toFixed(1) + 'px';
+    });
+  });
+}
+
+/* ---------- generic API call ---------- */
+async function api(path, body){
+  const url = ORIGIN + path + (path.includes('?') ? '&' : '?') + 't=' + encodeURIComponent(TOKEN);
+  try{
+    const r = body
+      ? await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
+      : await fetch(url, {cache:'no-store'});
+    return await r.json();
+  }catch(e){ return null; }
+}
+
+/* ---------- panels ---------- */
+function renderPanel(board){
+  const panel = document.createElement('div');
+  panel.className = 'panel';
+  const tabs = document.createElement('div');
+  tabs.className = 'ptabs';
+  [['pad','⇕ Trackpad'], ['snips','✂︎ Snippets'], ['apps','⊞ Apps'], ['clip','📋 Clipboard'], ['info','ⓘ Status']].forEach(([k, label]) => {
+    const b = document.createElement('button');
+    b.className = 'ptab' + (state.panel === k ? ' on' : '');
+    b.textContent = label;
+    b.onclick = () => { state.panel = k; render(); };
+    tabs.appendChild(b);
+  });
+  panel.appendChild(tabs);
+  const body = document.createElement('div');
+  body.className = 'pbody';
+  panel.appendChild(body);
+  if(state.panel === 'pad') buildPad(body);
+  else if(state.panel === 'snips') buildSnips(body);
+  else if(state.panel === 'apps') buildApps(body);
+  else if(state.panel === 'clip') buildClip(body);
+  else buildInfo(body);
+  board.appendChild(panel);
+}
+
+function buildPad(body){
+  const pad = document.createElement('div');
+  pad.className = 'pad';
+  pad.textContent = 'drag = move the Mac cursor · tap = click · two fingers = scroll · two-finger tap = right click';
+  let ptrs = new Map(), maxPtrs = 0, moved = 0, t0 = 0;
+
+  pad.addEventListener('pointerdown', e => {
+    try{ pad.setPointerCapture(e.pointerId); }catch(_){}
+    ptrs.set(e.pointerId, {x: e.clientX, y: e.clientY});
+    maxPtrs = Math.max(maxPtrs, ptrs.size);
+    if(ptrs.size === 1){ moved = 0; t0 = Date.now(); }
+    pad.classList.add('live');
+  });
+  pad.addEventListener('pointermove', e => {
+    const p = ptrs.get(e.pointerId);
+    if(!p) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    moved += Math.abs(dx) + Math.abs(dy);
+    if(moved < 3) return;
+    const dir = state.naturalScroll ? -1 : 1;
+    if(ptrs.size >= 2) api('/mouse', {t:'scroll', dx: Math.round(dx * dir), dy: Math.round(dy * dir)});
+    else api('/mouse', {t:'move', dx: +(dx * state.padGain).toFixed(1), dy: +(dy * state.padGain).toFixed(1)});
+  });
+  const release = e => {
+    if(!ptrs.has(e.pointerId)) return;
+    const wasLast = ptrs.size === 1;
+    ptrs.delete(e.pointerId);
+    if(!ptrs.size){ pad.classList.remove('live'); }
+    if(wasLast && moved < 12 && Date.now() - t0 < 320){
+      api('/mouse', {t:'click', btn: maxPtrs >= 2 ? 'right' : 'left', n: 1});
+      flash(pad);
+    }
+    if(!ptrs.size){ maxPtrs = 0; }
+  };
+  pad.addEventListener('pointerup', release);
+  pad.addEventListener('pointercancel', release);
+  body.appendChild(pad);
+
+  const col = document.createElement('div');
+  col.className = 'padbtns';
+  const mk = (label, fn, cls) => {
+    const b = document.createElement('button');
+    b.className = 'pbtn ' + (cls || '');
+    b.textContent = label;
+    b.onclick = fn;
+    return b;
+  };
+  col.appendChild(mk('● click', () => api('/mouse', {t:'click', btn:'left'})));
+  col.appendChild(mk('● right', () => api('/mouse', {t:'click', btn:'right'})));
+  const dragBtn = mk(state.dragLock ? '⇔ drag ON' : '⇔ drag', () => {
+    state.dragLock = !state.dragLock;
+    api('/mouse', {t: state.dragLock ? 'down' : 'up', btn:'left'});
+    render();
+  }, state.dragLock ? 'on' : '');
+  col.appendChild(dragBtn);
+  col.appendChild(mk('⇅ ' + (state.naturalScroll ? 'natural' : 'inverted'), () => {
+    state.naturalScroll = !state.naturalScroll; render();
+  }, state.naturalScroll ? 'on' : ''));
+  col.appendChild(mk('⚡ ×' + state.padGain.toFixed(1), () => {
+    state.padGain = state.padGain >= 2.3 ? 1.0 : +(state.padGain + 0.6).toFixed(1);
+    render();
+  }));
+  body.appendChild(col);
+}
+
+function buildSnips(body){
+  const col = document.createElement('div');
+  col.className = 'col';
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = state.snippets.length
+    ? 'Tap a snippet and it types on the Mac. Over 40 characters it is pasted via the clipboard instead. Tap ✏️ Edit first to change or delete one.'
+    : 'No snippets yet. A snippet is a block of text — your email, a sign-off, an address — that gets typed on the Mac with one tap. Tap ＋ to make one.';
+  col.appendChild(hint);
+
+  const grid = document.createElement('div');
+  grid.className = 'snipgrid';
+  state.snippets.forEach((sn, i) => {
+    const b = document.createElement('button');
+    b.className = 'snipcard';
+    const name = document.createElement('b');
+    name.textContent = sn.l || sn.u.slice(0, 18);
+    const prev = document.createElement('span');
+    prev.textContent = sn.u.length > 70 ? sn.u.slice(0, 70) + '…' : sn.u;
+    b.append(name, prev);
+    b.onclick = () => {
+      if(state.edit){ editSnippet(i); return; }
+      if(sn.u) sendText(sn.u, sn.u.length > 40 ? 'paste' : 'type');
+      flash(b);
+    };
+    grid.appendChild(b);
+  });
+  const add = document.createElement('button');
+  add.className = 'snipcard add';
+  add.innerHTML = '<b>＋ snippet</b><span>add a new one</span>';
+  add.onclick = () => editSnippet(-1);
+  grid.appendChild(add);
+  col.appendChild(grid);
+  body.appendChild(col);
+}
+
+function buildApps(body){
+  const wrap = document.createElement('div');
+  wrap.className = 'apps';
+  wrap.textContent = 'loading apps…';
+  body.appendChild(wrap);
+  api('/apps').then(d => {
+    if(!d || !d.apps){ wrap.textContent = 'could not read the Mac app list'; return; }
+    wrap.innerHTML = '';
+    d.apps.forEach(a => {
+      const el = document.createElement('div');
+      el.className = 'app' + (a.active ? ' on' : '');
+      if(a.icon){
+        const img = document.createElement('img');
+        img.src = 'data:image/png;base64,' + a.icon;
+        el.appendChild(img);
+      }
+      const n = document.createElement('div');
+      n.textContent = a.name;
+      el.appendChild(n);
+      el.onclick = async () => {
+        const r = await api('/focus', {pid: a.pid});
+        if(r && r.ok){ render(); }
+      };
+      wrap.appendChild(el);
+    });
+  });
+}
+
+function buildClip(body){
+  const col = document.createElement('div');
+  col.className = 'col';
+  const info = document.createElement('div');
+  info.className = 'hint';
+  info.textContent = 'reading the Mac clipboard…';
+  const pre = document.createElement('div');
+  pre.className = 'cliptext';
+  pre.textContent = '—';
+  const btns = document.createElement('div');
+  btns.className = 'chips';
+
+  const refresh = async () => {
+    const d = await api('/clipboard');
+    if(!d){ info.textContent = 'could not reach the Mac'; return; }
+    pre.textContent = d.text || '(empty)';
+    info.textContent = 'Mac clipboard · ' + (d.length || 0) + ' characters';
+  };
+  const mk = (label, fn) => { const b = document.createElement('button'); b.className='chip'; b.textContent = label; b.onclick = fn; return b; };
+
+  btns.appendChild(mk('↻ refresh', refresh));
+  btns.appendChild(mk('⤓ to iPad', () => { navigator.clipboard.writeText(pre.textContent || '').catch(()=>{}); }));
+  btns.appendChild(mk('⤒ send iPad copy', async () => {
+    try{
+      const t = await navigator.clipboard.readText();
+      if(t){ await api('/clipboard', {s: t}); refresh(); }
+      else info.textContent = 'iPad clipboard is empty';
+    }catch(e){ info.textContent = 'iPad blocked the clipboard read — type it below instead'; }
+  }));
+  btns.appendChild(mk('⌘V paste on Mac', () => api('/key', {k:'v', m:['cmd']})));
+
+  col.append(info, pre, btns);
+
+  const ta = document.createElement('textarea');
+  ta.placeholder = 'Type or paste text to put on the Mac clipboard…';
+  ta.style.cssText = 'min-height:70px;background:var(--input);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:15px;color:var(--txt);-webkit-user-select:text;user-select:text;';
+  const setRow = document.createElement('div');
+  setRow.className = 'chips';
+  setRow.appendChild(mk('↑ set Mac clipboard', async () => { await api('/clipboard', {s: ta.value}); ta.value=''; refresh(); }));
+  setRow.appendChild(mk('↑ set + paste', async () => { await api('/clipboard', {s: ta.value, paste:true}); ta.value=''; refresh(); }));
+  col.append(ta, setRow);
+  body.appendChild(col);
+  refresh();
+}
+
+function buildInfo(body){
+  const col = document.createElement('div');
+  col.className = 'col';
+  const grid = document.createElement('div');
+  grid.className = 'statgrid';
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.textContent = 'checking…';
+  col.append(grid, hint);
+  const btns = document.createElement('div');
+  btns.className = 'chips';
+  const b = document.createElement('button');
+  b.className = 'chip';
+  b.textContent = '↻ refresh';
+  b.onclick = () => render();
+  btns.appendChild(b);
+  col.appendChild(btns);
+  body.appendChild(col);
+
+  const t0 = performance.now();
+  api('/status').then(d => {
+    const ms = Math.round(performance.now() - t0);
+    if(!d){ grid.innerHTML = '<div class="stat"><b>offline</b><span>bridge</span></div>'; return; }
+    const cells = [
+      ['Battery', (d.battery !== undefined ? d.battery + '%' + (d.charging ? ' ⚡' : '') : '—')],
+      ['Bridge', 'v' + d.version],
+      ['Round trip', ms + ' ms'],
+      ['Accessibility', d.ax ? 'granted' : 'missing'],
+      ['Mac apps', String(d.apps)],
+      ['Mac up', Math.floor((d.uptime||0)/3600) + 'h' + String(Math.floor(((d.uptime||0)%3600)/60)).padStart(2,'0')],
+    ];
+    grid.innerHTML = '';
+    cells.forEach(([label, val]) => {
+      const s = document.createElement('div');
+      s.className = 'stat';
+      s.innerHTML = '<b>' + esc(val) + '</b><span>' + esc(label) + '</span>';
+      grid.appendChild(s);
+    });
+    hint.textContent = 'host: ' + d.host + (d.cursor ? '  ·  cursor ' + d.cursor[0] + ',' + d.cursor[1] : '');
+    state.latency = ms;
+  });
+}
+
+function renderQuickBar(board){
+  if(!state.quickOn || !state.quick.length) return;
+  const bar = document.createElement('div');
+  bar.className = 'quickbar';
+  const title = document.createElement('div');
+  title.className = 'qbtitle';
+  title.textContent = '⌘ quick bar';
+  bar.appendChild(title);
+  const rec = document.createElement('button');
+  rec.className = 'recbtn' + (state.rec ? ' on' : '');
+  rec.textContent = state.rec ? '■ stop · ' + state.rec.length : '● macro';
+  rec.onclick = () => { if(state.rec) stopRecording(); else { state.rec = []; render(); } };
+  bar.appendChild(rec);
+  state.quick.forEach((q, i) => {
+    const b = document.createElement('button');
+    b.className = 'qchip';
+    b.textContent = q.l || q.k || '?';
+    b.onclick = () => {
+      if(state.edit){ editQuick(i); return; }
+      if(q.seq) playSeq(q.seq);
+      else if(q.u !== undefined) sendText(q.u, q.u.length > 40 ? 'paste' : 'type');
+      else sendKey(q.k, q.m || []);
+      flash(b);
+    };
+    bar.appendChild(b);
+  });
+  const add = document.createElement('button');
+  add.className = 'qchip add';
+  add.textContent = '＋';
+  add.onclick = () => editQuick(-1);
+  bar.appendChild(add);
+  board.appendChild(bar);
+}
+
+function editQuick(i){
+  openSheet((sheet, close) => {
+    const q = i >= 0 ? state.quick[i] : { l:'', k:'', m:[] };
+    sheet.innerHTML = '<h3>' + (i >= 0 ? 'Edit quick button' : 'New quick button') + (q.seq ? ' · macro' : '') + '</h3>';
+    if(q.seq){
+      const shown = q.seq.map(s => (s.m || []).map(m => m.slice(0,3)).join('+') + ' ' + (s.k.length > 1 ? s.k : s.k.toUpperCase())).join(' → ');
+      sheet.innerHTML += '<div class="hint" style="margin-bottom:10px">recorded: ' + esc(shown) + '<br>(rename it and Save to keep the macro, or fill in the fields below to replace it with a single key)</div>';
+    }
+    const mods = new Set(q.m || []);
+    const isText = q.u !== undefined;
+
+    const f1 = div('fld','<label>Label on the button</label>');
+    const l = document.createElement('input'); l.type='text'; l.value = q.l || '';
+    f1.appendChild(l); sheet.appendChild(f1);
+
+    const f2 = div('fld','<label>Type</label>');
+    const sel = document.createElement('select');
+    [['key','Keyboard shortcut'],['text','Type text / paste snippet']].forEach(([v,t]) => {
+      const o = document.createElement('option'); o.value = v; o.textContent = t;
+      if((v === 'text') === isText) o.selected = true; sel.appendChild(o);
+    });
+    f2.appendChild(sel); sheet.appendChild(f2);
+
+    const keyWrap = div('fld','<label>Key</label>');
+    const k = document.createElement('input'); k.type='text'; k.value = q.k || '';
+    keyWrap.appendChild(k); sheet.appendChild(keyWrap);
+
+    const modWrap = div('fld','<label>Modifiers</label>');
+    const chips = document.createElement('div'); chips.className='chips';
+    [['cmd','⌘ Cmd'],['option','⌥ Opt'],['control','⌃ Ctrl'],['shift','⇧ Shift'],['fn','fn']].forEach(([v,t]) => {
+      const c = document.createElement('button'); c.className = 'chip' + (mods.has(v)?' on':''); c.textContent = t;
+      c.onclick = () => { mods.has(v) ? mods.delete(v) : mods.add(v); c.classList.toggle('on'); };
+      chips.appendChild(c);
+    });
+    modWrap.appendChild(chips); sheet.appendChild(modWrap);
+
+    const textWrap = div('fld','<label>Text to type on the Mac</label>');
+    const ta = document.createElement('textarea'); ta.value = q.u || '';
+    textWrap.appendChild(ta); sheet.appendChild(textWrap);
+
+    function sync(){
+      const t = sel.value === 'text';
+      keyWrap.style.display = t ? 'none' : '';
+      modWrap.style.display = t ? 'none' : '';
+      textWrap.style.display = t ? '' : 'none';
+    }
+    sel.onchange = sync; sync();
+
+    const b = document.createElement('div'); b.className='sheetbtns';
+    if(i >= 0){
+      const del = document.createElement('button'); del.className='del'; del.textContent='Delete';
+      del.onclick = () => { state.quick.splice(i,1); saveStore(); close(); render(); };
+      b.appendChild(del);
+    }
+    const save = document.createElement('button'); save.className='primary'; save.textContent='Save';
+    save.onclick = () => {
+      const o = { l: l.value || (sel.value==='text' ? ta.value.slice(0,14) : k.value.toUpperCase()) };
+      if(sel.value === 'text'){ o.u = ta.value; }
+      else { o.k = k.value.trim() || 'a'; if(mods.size) o.m = [...mods]; }
+      if(i >= 0){
+        const prev = state.quick[i];
+        state.quick[i] = o;
+        if(prev && prev.seq && !k.value.trim()) state.quick[i].seq = prev.seq;   // keep the macro
+      } else state.quick.push(o);
+      saveStore(); close(); render();
+    };
+    b.appendChild(save); sheet.appendChild(b);
+  });
+}
+
+function renderSnippets(board){
+  const r = document.createElement('div');
+  r.className = 'row'; r.style.flexWrap = 'wrap'; r.style.gap = '8px'; r.style.alignContent='flex-start';
+  state.snippets.forEach((sn, i) => {
+    const b = document.createElement('button');
+    b.className = 'key'; b.style.flex = '0 0 auto'; b.style.minWidth = '120px'; b.style.flexGrow = '0';
+    b.innerHTML = '<div class="lbl">' + esc(sn.l || sn.u.slice(0,14)) + '</div>';
+    b.onclick = (e) => { if(state.edit){ editSnippet(i); } else { sendText(sn.u, sn.u.length > 40 ? 'paste' : 'type'); flash(b); } };
+    r.appendChild(b);
+  });
+  const add = document.createElement('button');
+  add.className = 'key'; add.style.flex = '0 0 auto'; add.style.minWidth = '110px';
+  add.innerHTML = '<div class="lbl">＋ snippet</div>';
+  add.onclick = () => editSnippet(-1);
+  r.appendChild(add);
+  board.appendChild(r);
+}
+
+function renderSnipStrip(){
+  const el = document.getElementById('snips');
+  el.innerHTML = '';
+  el.classList.toggle('show', state.snipsOpen);
+  if(!state.snipsOpen) return;
+  state.snippets.forEach((sn, i) => {
+    const b = document.createElement('button');
+    b.className = 'snip'; b.textContent = sn.l || sn.u.slice(0,20);
+    b.onclick = () => sendText(sn.u, sn.u.length > 40 ? 'paste' : 'type');
+    el.appendChild(b);
+  });
+}
+
+/* ---------- editor ---------- */
+const KEYCHOICES = ['a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z',
+ '0','1','2','3','4','5','6','7','8','9','return','tab','space','delete','forwarddelete','escape','left','right','up','down',
+ 'home','end','pageup','pagedown','f1','f2','f3','f4','f5','f6','f7','f8','f9','f10','f11','f12','f13','f14','f15','f16','f17','f18','f19','f20','`','-','=','[',']','\\',';',"'",',','.','/'];
+
+function openKeyEditor(row, k){
+  openSheet((sheet, close) => {
+    const mods = new Set((k.a && k.a.m) || []);
+    const type = k.a && k.a.layer ? 'layer' : (k.a && k.a.m && k.a.k === undefined) ? 'mod' : (k.a && k.a.u !== undefined) ? 'text' : 'key';
+    let cur = { type, k: (k.a && k.a.k) || 'a', u: (k.a && k.a.u) || '', layer: (k.a && k.a.layer) || 'main' };
+
+    sheet.innerHTML = '<h3>Edit key</h3>';
+
+    const f1 = div('fld','<label>Label (what you see)</label>');
+    const lblIn = document.createElement('input'); lblIn.type='text'; lblIn.value = k.l || '';
+    f1.appendChild(lblIn); sheet.appendChild(f1);
+
+    const f2 = div('fld','<label>Small label (optional, top-right)</label>');
+    const subIn = document.createElement('input'); subIn.type='text'; subIn.value = k.s || '';
+    f2.appendChild(subIn); sheet.appendChild(f2);
+
+    const fTop = div('fld','<label>Symbol above the key (e.g. ! above 1)</label>');
+    const topIn = document.createElement('input'); topIn.type='text'; topIn.value = k.t || '';
+    fTop.appendChild(topIn); sheet.appendChild(fTop);
+
+    const f3 = div('fld','<label>Action</label>');
+    const sel = document.createElement('select');
+    [['key','Send a key'],['mod','Modifier key (sticky)'],['text','Type text / snippet'],['layer','Switch layer']]
+      .forEach(([v,t]) => { const o=document.createElement('option'); o.value=v; o.textContent=t; if(v===type) o.selected=true; sel.appendChild(o); });
+    f3.appendChild(sel); sheet.appendChild(f3);
+
+    const keyWrap = div('fld','<label>Key</label>');
+    const keyIn = document.createElement('input'); keyIn.type='text'; keyIn.value = cur.k; keyIn.setAttribute('list','keylist');
+    const dl = document.createElement('datalist'); dl.id='keylist';
+    KEYCHOICES.forEach(c => { const o=document.createElement('option'); o.value=c; dl.appendChild(o); });
+    keyWrap.appendChild(keyIn); keyWrap.appendChild(dl); sheet.appendChild(keyWrap);
+
+    const modWrap = div('fld','<label>Modifiers</label>');
+    const chips = document.createElement('div'); chips.className='chips';
+    [['cmd','⌘ Cmd'],['option','⌥ Opt'],['control','⌃ Ctrl'],['shift','⇧ Shift'],['fn','fn']].forEach(([v,t]) => {
+      const c = document.createElement('button'); c.className = 'chip' + (mods.has(v)?' on':''); c.textContent = t;
+      c.onclick = () => { mods.has(v) ? mods.delete(v) : mods.add(v); c.classList.toggle('on'); };
+      chips.appendChild(c);
+    });
+    modWrap.appendChild(chips); sheet.appendChild(modWrap);
+
+    const textWrap = div('fld','<label>Text to type</label>');
+    const ta = document.createElement('textarea'); ta.value = cur.u;
+    textWrap.appendChild(ta); sheet.appendChild(textWrap);
+
+    const layerWrap = div('fld','<label>Target layer</label>');
+    const lsel = document.createElement('select');
+    layout().layers.forEach(l => { const o=document.createElement('option'); o.value=l.id; o.textContent=l.label||l.id; if(l.id===cur.layer) o.selected=true; lsel.appendChild(o); });
+    layerWrap.appendChild(lsel); sheet.appendChild(layerWrap);
+
+    const f4 = div('fld','<label>Width</label>');
+    const wIn = document.createElement('input'); wIn.type='range'; wIn.min='0.4'; wIn.max='6'; wIn.step='0.05'; wIn.value = String(k.w || 1);
+    wIn.style.width='100%';
+    f4.appendChild(wIn); sheet.appendChild(f4);
+
+    const f5 = div('fld','<label>Style</label>');
+    const ssel = document.createElement('select');
+    [['','Normal'],['mod','Dark / modifier'],['accent','Blue'],['danger','Red']].forEach(([v,t]) => { const o=document.createElement('option'); o.value=v; o.textContent=t; if((k.st||'')===v) o.selected=true; ssel.appendChild(o); });
+    f5.appendChild(ssel); sheet.appendChild(f5);
+
+    /* per-key custom colours */
+    let colorTouched = !!(k.bg || k.fg);
+    const f6 = div('fld','<label>Custom colour for this key</label>');
+    const cg = document.createElement('div'); cg.className = 'grid2';
+    const mkColor = (label, init) => {
+      const w = document.createElement('div');
+      const l = document.createElement('label'); l.textContent = label;
+      l.style.cssText = 'display:block;font-size:11.5px;color:var(--dim);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em';
+      const i = document.createElement('input'); i.type='color'; i.value = init; i.oninput = () => { colorTouched = true; };
+      w.append(l, i); return [w, i];
+    };
+    const [wbg, bgIn] = mkColor('Key face', toHex(k.bg || currentVar('--key')));
+    const [wfg, fgIn] = mkColor('Label', toHex(k.fg || currentVar('--txt')));
+    cg.append(wbg, wfg);
+    const clearC = document.createElement('button'); clearC.className = 'chip';
+    clearC.textContent = '↺ Use theme colours';
+    clearC.onclick = () => { colorTouched = false; bgIn.value = toHex(currentVar('--key')); fgIn.value = toHex(currentVar('--txt')); clearC.classList.add('on'); };
+    f6.append(cg, clearC); sheet.appendChild(f6);
+
+    function syncVisibility(){
+      keyWrap.style.display = (cur.type==='key'||cur.type==='mod') ? '' : 'none';
+      modWrap.style.display = (cur.type==='key'||cur.type==='mod') ? '' : 'none';
+      textWrap.style.display = cur.type==='text' ? '' : 'none';
+      layerWrap.style.display = cur.type==='layer' ? '' : 'none';
+    }
+    sel.onchange = () => { cur.type = sel.value; if(sel.value==='text'){ textWrap.style.display=''; } syncVisibility(); };
+    syncVisibility();
+
+    const btns = document.createElement('div'); btns.className='sheetbtns';
+    const del = document.createElement('button'); del.className='del'; del.textContent='Delete';
+    del.onclick = () => { const i = row.indexOf(k); if(i>=0) row.splice(i,1); saveStore(); close(); render(); };
+    const dup = document.createElement('button'); dup.textContent='Duplicate';
+    dup.onclick = () => { const i = row.indexOf(k); row.splice(i+1, 0, JSON.parse(JSON.stringify(k))); saveStore(); close(); render(); };
+    const save = document.createElement('button'); save.className='primary'; save.textContent='Save';
+    save.onclick = () => {
+      k.l = lblIn.value; if(subIn.value) k.s = subIn.value; else delete k.s;
+      if(topIn.value) k.t = topIn.value; else delete k.t;
+      k.w = parseFloat(wIn.value);
+      if(ssel.value) k.st = ssel.value; else delete k.st;
+      if(colorTouched){ k.bg = bgIn.value; k.fg = fgIn.value; } else { delete k.bg; delete k.fg; }
+      const a = {};
+      if(cur.type==='layer'){ a.layer = lsel.value; }
+      else if(cur.type==='text'){ a.u = ta.value; }
+      else if(cur.type==='mod'){ a.m = [...mods][0] || 'shift'; }
+      else { a.k = keyIn.value.trim() || 'a'; if(mods.size) a.m = [...mods]; }
+      k.a = a;
+      saveStore(); close(); render();
+    };
+    btns.append(del, dup, save); sheet.appendChild(btns);
+  });
+}
+
+function editSnippet(i){
+  openSheet((sheet, close) => {
+    const sn = i >= 0 ? state.snippets[i] : {l:'', u:''};
+    sheet.innerHTML = '<h3>' + (i>=0 ? 'Edit snippet' : 'New snippet') + '</h3>';
+    const f1 = div('fld','<label>Button label</label>');
+    const l = document.createElement('input'); l.type='text'; l.value = sn.l || ''; f1.appendChild(l); sheet.appendChild(f1);
+    const f2 = div('fld','<label>Text to type on the Mac</label>');
+    const t = document.createElement('textarea'); t.value = sn.u || ''; f2.appendChild(t); sheet.appendChild(f2);
+    const btns = document.createElement('div'); btns.className='sheetbtns';
+    if(i>=0){ const d=document.createElement('button'); d.className='del'; d.textContent='Delete';
+      d.onclick = () => { state.snippets.splice(i,1); saveStore(); close(); render(); }; btns.appendChild(d); }
+    const s = document.createElement('button'); s.className='primary'; s.textContent='Save';
+    s.onclick = () => { const o = {l:l.value || t.value.slice(0,16), u:t.value}; if(i>=0) state.snippets[i]=o; else state.snippets.push(o); saveStore(); close(); render(); };
+    btns.appendChild(s); sheet.appendChild(btns);
+  });
+}
+
+/* ---------- theme editor ---------- */
+function openThemeEditor(){
+  openSheet((sheet, close) => {
+    sheet.innerHTML = '<h3>🎨 Theme &amp; colours</h3>';
+
+    const p = div('fld','<label>Preset</label>');
+    const chips = document.createElement('div'); chips.className = 'chips';
+    THEMES.forEach(t => {
+      const c = document.createElement('button');
+      c.className = 'chip' + (t.id === state.theme.id ? ' on' : '');
+      c.textContent = t.name;
+      c.onclick = () => { state.theme = { id: t.id, over:{} }; saveTheme(); applyTheme(); openThemeEditor(); };
+      chips.appendChild(c);
+    });
+    p.appendChild(chips); sheet.appendChild(p);
+
+    THEME_COLORS.forEach(([tok, label]) => {
+      const f = div('fld','<label>' + label + '</label>');
+      const inp = document.createElement('input'); inp.type = 'color';
+      inp.value = toHex(currentVar(tok));
+      inp.oninput = () => setOverride(tok, inp.value);
+      f.appendChild(inp); sheet.appendChild(f);
+    });
+
+    THEME_SIZES.forEach(([tok, label, mn, mx, st, unit]) => {
+      unit = unit || 'px';
+      const f = div('fld','<label>' + label + '</label>');
+      const inp = document.createElement('input'); inp.type = 'range';
+      inp.min = mn; inp.max = mx; inp.step = st;
+      inp.value = parseFloat(currentVar(tok)) || (tok === '--keyh' ? 1 : 9);
+      const out = document.createElement('div'); out.className = 'hint'; out.textContent = inp.value + unit;
+      inp.oninput = () => { out.textContent = inp.value + unit; setOverride(tok, inp.value + unit); sizeRows(); };
+      f.append(inp, out); sheet.appendChild(f);
+    });
+
+    const b = document.createElement('div'); b.className = 'sheetbtns';
+    const r = document.createElement('button'); r.textContent = '↺ Reset';
+    r.onclick = () => { state.theme = { id: state.theme.id, over:{} }; saveTheme(); applyTheme(); openThemeEditor(); };
+    const d = document.createElement('button'); d.className = 'primary'; d.textContent = 'Done';
+    d.onclick = () => { close(); render(); };
+    b.append(r, d); sheet.appendChild(b);
+  });
+}
+
+/* ---------- layout tools ---------- */
+function addLayer(){
+  const name = prompt('Layer name (e.g. "Games", "Numbers")');
+  if(!name) return;
+  const id = 'L' + Date.now().toString(36);
+  layout().layers.push({ id, label: name, rows: [[{l:'esc',a:{k:'escape'}}], [{l:'a',a:{k:'a'}}]] });
+  saveStore(); state.layer = id; render();
+}
+function duplicateLayout(){
+  const copy = JSON.parse(JSON.stringify(layout()));
+  copy.name = layout().name + ' copy';
+  state.layouts.push(copy); state.layoutIndex = state.layouts.length-1; saveStore(); render();
+}
+function exportLayouts(){
+  const s = JSON.stringify({ layouts: state.layouts, theme: state.theme }, null, 2);
+  openSheet((sheet, close) => {
+    sheet.innerHTML = '<h3>Export / import layouts + theme</h3>';
+    const ta = document.createElement('textarea'); ta.style.width='100%'; ta.style.height='240px'; ta.value = s;
+    sheet.appendChild(ta);
+    const b = document.createElement('div'); b.className='sheetbtns';
+    const c = document.createElement('button'); c.textContent='Copy'; 
+    c.onclick = () => { ta.select(); document.execCommand('copy'); c.textContent = 'Copied ✓'; };
+    const cl = document.createElement('button'); cl.className='primary'; cl.textContent='Close'; cl.onclick = close;
+    b.append(c, cl); sheet.appendChild(b);
+  });
+}
+function importLayouts(){
+  openSheet((sheet, close) => {
+    sheet.innerHTML = '<h3>Paste layout JSON</h3>';
+    const ta = document.createElement('textarea'); ta.style.width='100%'; ta.style.height='200px'; sheet.appendChild(ta);
+    const b = document.createElement('div'); b.className='sheetbtns';
+    const s = document.createElement('button'); s.className='primary'; s.textContent='Import';
+    s.onclick = () => { try{
+      const o = JSON.parse(ta.value);
+      const lays = Array.isArray(o) ? o : o.layouts;
+      if(Array.isArray(lays) && lays.length){
+        state.layouts = lays; state.layoutIndex = 0; state.layer = lays[0].layers[0].id;
+        if(!Array.isArray(o) && o.theme){ state.theme = o.theme; saveTheme(); applyTheme(); }
+        saveStore(); close(); render();
+      }
+    }catch(e){ alert('Invalid JSON'); } };
+    const c = document.createElement('button'); c.textContent='Cancel'; c.onclick = close;
+    b.append(c, s); sheet.appendChild(b);
+  });
+}
+function resetAll(){
+  if(!confirm('Reset all layouts to the built-in defaults?')) return;
+  localStorage.removeItem('ipadkb:layouts');
+  state.layouts = JSON.parse(JSON.stringify(DEFAULT_LAYOUTS));
+  state.layoutIndex = 0; state.layer = 'main'; saveStore(); render();
+}
+function openMenu(){
+  openSheet((sheet, close) => {
+    sheet.innerHTML = '<h3>Layouts & settings</h3>';
+    const f = div('fld','<label>Keyboard layout</label>');
+    const sel = document.createElement('select');
+    state.layouts.forEach((l,i) => { const o=document.createElement('option'); o.value=i; o.textContent=l.name; if(i===state.layoutIndex) o.selected=true; sel.appendChild(o); });
+    sel.onchange = () => { state.layoutIndex = +sel.value; state.layer = layout().layers[0].id; saveStore(); close(); render(); };
+    f.appendChild(sel); sheet.appendChild(f);
+
+    const info = div('fld','<label>Connection</label>');
+    info.innerHTML += '<div class="hint">Server: ' + ORIGIN + '<br>Token: ' + (TOKEN || '—') +
+      '<br>Accessibility on Mac: ' + (ax ? 'granted ✓' : '<b style="color:#ffb3b3">NOT granted ✗</b>') +
+      '<br><br>Tip: open this page in Safari, tap Share → <b>Add to Home Screen</b> to run it fullscreen like an app.</div>';
+    sheet.appendChild(info);
+
+    if(!ax){
+      const fix = div('fld','');
+      fix.innerHTML = '<div class="hint">MacSpace needs permission to type. On the Mac: System Settings → Privacy & Security → Accessibility → enable <b>MacSpace</b>, then relaunch it.</div>';
+      sheet.appendChild(fix);
+    }
+
+    const b = document.createElement('div'); b.className='sheetbtns';
+    const th = document.createElement('button'); th.textContent='🎨 Theme'; th.onclick = openThemeEditor;
+    const qb = document.createElement('button'); qb.textContent = (state.quickOn ? '⌘ Quick bar: on' : '⌘ Quick bar: off');
+    qb.onclick = () => { state.quickOn = !state.quickOn; saveStore(); close(); render(); };
+    const sn = document.createElement('button'); sn.textContent='Snippets'; 
+    sn.onclick = () => { state.snipsOpen = !state.snipsOpen; close(); render(); };
+    const ed = document.createElement('button'); ed.textContent='Rename layout';
+    ed.onclick = () => { const n = prompt('Layout name', layout().name); if(n){ layout().name = n; saveStore(); close(); render(); } };
+    const done = document.createElement('button'); done.className='primary'; done.textContent='Done'; done.onclick = close;
+    b.append(th, qb, sn, ed, done); sheet.appendChild(b);
+  });
+}
+
+/* ---------- helpers ---------- */
+function div(cls, html){ const d = document.createElement('div'); if(cls) d.className = cls; if(html) d.innerHTML = html; return d; }
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function flash(el){
+  if(!el) return;
+  el.classList.add('press');
+  const ms = parseFloat(currentVar('--pulse')) || 160;
+  clearTimeout(el._flashT);
+  el._flashT = setTimeout(() => el.classList.remove('press'), ms + 30);
+}
+function openSheet(build){
+  const wrap = document.getElementById('sheetwrap');
+  const sheet = document.getElementById('sheet');
+  sheet.innerHTML = '';
+  const close = () => { wrap.classList.remove('show'); sheet.innerHTML=''; };
+  build(sheet, close);
+  wrap.classList.add('show');
+  wrap.onclick = (e) => { if(e.target === wrap) close(); };
+}
+function setDot(cls, text){
+  const d = document.getElementById('dot');
+  d.className = 'dot ' + cls;
+  document.getElementById('status').textContent = text;
+}
+function showBanner(msg, bad){
+  const b = document.getElementById('banner');
+  b.className = 'show' + (bad ? ' bad' : '');
+  b.innerHTML = esc(msg) + ' <button>retry</button>';
+  b.querySelector('button').onclick = () => { fails = 0; hideBanner(); ping(); };
+}
+function hideBanner(){ document.getElementById('banner').className = ''; }
+function badToken(){ showBanner('Wrong or missing access token. Open the URL printed by the Mac bridge (it ends with ?t=...).', true); }
+
+/* ---------- native keyboard streaming ---------- */
+let prevVal = '';
+function setupNative(){
+  const ta = document.getElementById('nkb');
+  ta.addEventListener('input', () => {
+    const nv = ta.value, ov = prevVal;
+    let i = 0;
+    while(i < ov.length && i < nv.length && ov[i] === nv[i]) i++;
+    let j = 0;
+    while(j < ov.length - i && j < nv.length - i && ov[ov.length-1-j] === nv[nv.length-1-j]) j++;
+    const del = ov.length - i - j;
+    const ins = nv.slice(i, nv.length - j);
+    if(del > 0) sendBackspaces(del);
+    if(ins) sendText(ins, 'type');
+    prevVal = nv;
+    if(nv.length > 400){ ta.value = ''; prevVal = ''; }
+  });
+  // Enter inserts a newline in the textarea; send a real Return instead
+  ta.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter' && !e.shiftKey){
+      e.preventDefault();
+      sendKey('return', [], 'tap');
+    }
+  });
+}
+function sendBackspaces(n){
+  for(let i=0;i<n && i<60;i++) post('/key', {k:'delete', m:[], d:'tap'});
+}
+
+/* ---------- boot ---------- */
+async function ping(){
+  try{
+    const r = await fetch(ORIGIN + '/health', {cache:'no-store'});
+    const j = await r.json();
+    ax = !!j.ax;
+    if(!ax){ setDot('warn','connected — Mac permission needed'); showBanner('Mac has not granted Accessibility permission, so keys won\'t type yet. System Settings → Privacy & Security → Accessibility → enable “MacSpace”.', true); }
+    else { setDot('on','connected · ' + (j.host || 'mac')); hideBanner(); }
+    // keep the on-screen letter case honest even if caps changed on the Mac itself
+    const p = await fetch(ORIGIN + '/ping?t=' + encodeURIComponent(TOKEN), {cache:'no-store'}).then(r => r.json()).catch(() => null);
+    if(p && typeof p.caps === 'boolean' && p.caps !== state.caps){ state.caps = p.caps; render(); }
+  }catch(e){ setDot('','server not responding'); }
+}
+
+loadStore();
+applyTheme();
+if(!layout().layers.find(l=>l.id===state.layer)) state.layer = layout().layers[0].id;
+if(!TOKEN) showBanner('No access token in the URL. Use the link printed by the Mac bridge (?t=…).', true);
+document.getElementById('btnEdit').onclick = () => { state.edit = !state.edit; render(); };
+document.getElementById('btnMenu').onclick = openMenu;
+document.getElementById('btnNative').onclick = () => { state.native = !state.native; render(); if(state.native) setTimeout(()=>document.getElementById('nkb').focus(), 80); };
+document.getElementById('btnBar').onclick = () => { state.quickOn = !state.quickOn; saveStore(); render(); };
+document.addEventListener('gesturestart', e => e.preventDefault());
+document.addEventListener('dblclick', e => e.preventDefault(), {passive:false});
+window.addEventListener('resize', sizeRows);
+window.addEventListener('orientationchange', () => setTimeout(sizeRows, 250));
+// never leave a modifier stuck down on the Mac if the app goes away mid-hold
+window.addEventListener('blur', releaseHeldMods);
+document.addEventListener('visibilitychange', () => { if(document.hidden) releaseHeldMods(); });
+setupNative();
+render();
+ping();
+setInterval(() => { if(!busy) ping(); }, 15000);
+</script>
+</body>
+</html>
