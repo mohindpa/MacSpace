@@ -31,6 +31,13 @@ Open in Safari on your iPad:  http://<your-mac-ip>:8787/?t=<token>
 
 Stop it with `./stop.sh`.
 
+> **Why run.sh stages a copy:** this project lives inside `Documents`, which macOS
+> protects with TCC. An app launched by LaunchServices that touches `Documents`
+> stops on a consent dialog, and MacSpace reads its token at startup — so it would
+> hang before serving anything. `run.sh` therefore copies `web/` and the token into
+> `~/Library/Application Support/MacSpace/` and runs from there. Edit the source
+> here, then re-run `./run.sh` to publish the change.
+
 ## 2. One-time: let the Mac accept the input
 
 macOS only lets an app type on your behalf if you allow it:
