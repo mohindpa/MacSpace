@@ -1,7 +1,7 @@
 # runtime state — never commit these
 token
 server.log
-preview*.png
+preview-*.png
 
 # build output
 build/

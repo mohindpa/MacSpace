@@ -11,12 +11,14 @@ iPad (Safari / Home Screen app)  --Wi-Fi-->  Mac (Swift helper)  -->  real input
 
 Nothing goes through the cloud. No account, no subscription, no App Store.
 
+![MacSpace on an iPad](preview.png)
+
 ---
 
 ## 1. Start it on the Mac
 
 ```bash
-cd ~/MacSpace
+cd "/Users/mohindpa/Documents/My Files/Curiosity Projects/MacSpace"
 ./build.sh      # compile (one time, ~10s)
 ./run.sh        # start it, prints the URL for the iPad
 ```
@@ -135,7 +137,7 @@ CoreGraphics keyboard events — which is exactly how the App Store apps do it t
 ## Files
 
 ```
-~/MacSpace/
+<project>/                  (this folder — Curiosity Projects/MacSpace)
 ├── src/main.swift        the Mac side (HTTP server + keyboard/mouse injection)
 ├── web/index.html        the whole iPad app: layout engine, themes, editors, panels
 ├── build.sh              compiles build/MacSpace.app
