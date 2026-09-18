@@ -1,0 +1,22 @@
+name: Build and test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate shell scripts
+        run: bash -n build.sh run.sh stop.sh grant-accessibility.sh test-caps.sh test-e2e.sh
+
+      - name: Build MacSpace
+        run: ./build.sh
