@@ -25,7 +25,7 @@ cp -R "$PWD/web" "$RUNTIME/web"
 if [ ! -f "$RUNTIME/token" ] && [ -f "$PWD/token" ]; then cp "$PWD/token" "$RUNTIME/token"; fi
 
 # Launch as a real .app so macOS attributes the Accessibility permission to it.
-open -n "$APP" --args --port 8787 --dir "$RUNTIME"
+open -n "$APP" --args --port 8787 --dir "$RUNTIME" --web "$RUNTIME/web"
 
 sleep 1
 IP=$(ipconfig getifaddr en0 2>/dev/null || echo "localhost")

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Open the Accessibility pane so you can tick "iPad Keyboard".
+# Open the Accessibility pane so you can enable MacSpace.
 open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
 cat <<'MSG'
 

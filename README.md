@@ -15,6 +15,11 @@ lands on the Mac as real keystrokes, cursor movement and clicks.
 - macOS Accessibility permission enabled for MacSpace.
 - A network that allows devices on the LAN to reach one another; guest Wi-Fi and some VPNs can block the connection.
 
+**Prefer a download?** Once the first signed release is published, download the
+DMG from [Releases](https://github.com/mohindpa/MacSpace/releases), drag
+`MacSpace.app` to Applications, and use its menu-bar keyboard icon to copy the
+iPad URL. You will still need to enable Accessibility permission once.
+
 
 ```
 iPad (Safari / Home Screen app)  --Wi-Fi-->  Mac (Swift helper)  -->  real input events

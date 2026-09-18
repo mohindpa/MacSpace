@@ -12,7 +12,7 @@ import ApplicationServices
 import AppKit
 import IOKit.ps
 
-let VERSION = "1.1"
+let VERSION = "1.1.0"
 
 // MARK: - Logger
 
@@ -338,7 +338,8 @@ final class Injector {
 
 final class Config {
     var port: UInt16 = 8787
-    var dir = NSHomeDirectory() + "/MacSpace"
+    var dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("MacSpace", isDirectory: true).path
     var webDir = ""
     var token = ""
     var dryRun = false
@@ -357,6 +358,11 @@ final class Config {
             default: break
             }
             i += 1
+        }
+        if c.webDir.isEmpty,
+           let bundledWeb = Bundle.main.resourceURL?.appendingPathComponent("web", isDirectory: true).path,
+           FileManager.default.fileExists(atPath: bundledWeb) {
+            c.webDir = bundledWeb
         }
         if c.webDir.isEmpty { c.webDir = c.dir + "/web" }
         // persistent token, stored next to the project
@@ -862,6 +868,46 @@ func lanIP() -> String? {
     return address
 }
 
+// MARK: - Menu bar
+
+final class StatusController: NSObject {
+    private let url: String
+    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+
+    init(url: String) {
+        self.url = url
+        super.init()
+
+        statusItem.button?.title = "⌨︎"
+        statusItem.button?.toolTip = "MacSpace"
+
+        let menu = NSMenu()
+        menu.addItem(withTitle: "MacSpace", action: nil, keyEquivalent: "")
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(withTitle: "Copy iPad URL", action: #selector(copyIPadURL), keyEquivalent: "c")
+        menu.addItem(withTitle: "Open Accessibility Settings", action: #selector(openAccessibilitySettings), keyEquivalent: "")
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(withTitle: "Quit MacSpace", action: #selector(quit), keyEquivalent: "q")
+        for item in menu.items { item.target = self }
+        statusItem.menu = menu
+    }
+
+    @objc private func copyIPadURL() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url, forType: .string)
+        statusItem.button?.toolTip = "iPad URL copied"
+    }
+
+    @objc private func openAccessibilitySettings() {
+        guard let settings = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else { return }
+        NSWorkspace.shared.open(settings)
+    }
+
+    @objc private func quit() {
+        NSApp.terminate(nil)
+    }
+}
+
 // MARK: - Main
 
 let config = Config.load()
@@ -872,10 +918,13 @@ server.start()
 let hostName = ProcessInfo.processInfo.hostName.replacingOccurrences(of: ".local", with: "")
 let ip = lanIP() ?? "your-mac-ip"
 let trusted = AXIsProcessTrusted()
+let iPadURL = "http://\(ip):\(config.port)/?t=\(config.token)"
+let nsapp = NSApplication.shared
+let statusController = StatusController(url: iPadURL)
 
 Log.line("MacSpace v\(VERSION) starting on port \(config.port)")
 Log.line("  token: \(config.token)")
-Log.line("  open on iPad:  http://\(ip):\(config.port)/?t=\(config.token)")
+Log.line("  open on iPad:  \(iPadURL)")
 Log.line("  or:            http://\(hostName).local:\(config.port)/?t=\(config.token)")
 if config.dryRun { Log.line("  DRY RUN — keystrokes will be logged, not injected") }
 if !trusted {
@@ -893,6 +942,5 @@ if !trusted {
 // registry of running apps when its launch/quit notifications can be delivered,
 // which needs a CFRunLoop on the main thread. Without this the app list freezes at
 // whatever was open when the helper started — new apps never show up.
-let nsapp = NSApplication.shared
 nsapp.setActivationPolicy(.accessory)   // never steal focus from the user
 nsapp.run()
