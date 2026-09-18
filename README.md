@@ -152,7 +152,7 @@ CoreGraphics keyboard events — which is exactly how the App Store apps do it t
 ## Files
 
 ```
-<project>/                  (this folder — Curiosity Projects/MacSpace)
+<project>/                  (the cloned MacSpace repository)
 ├── src/main.swift        the Mac side (HTTP server + keyboard/mouse injection)
 ├── web/index.html        the whole iPad app: layout engine, themes, editors, panels
 ├── build.sh              compiles build/MacSpace.app
