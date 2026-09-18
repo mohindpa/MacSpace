@@ -9,16 +9,24 @@ iPad (Safari / Home Screen app)  --Wi-Fi-->  Mac (Swift helper)  -->  real input
         your custom layout                       plain HTTP + token, LAN only
 ```
 
-Nothing goes through the cloud. No account, no subscription, no App Store.
+MacSpace's keyboard, mouse, clipboard, and application-control traffic stays on your local network. The optional Buy Me a Coffee button loads from a third-party CDN. No MacSpace account or cloud service is required.
 
 ![MacSpace on an iPad](preview.png)
 
 ---
 
+
+## Security and privacy
+
+MacSpace is a local-network HTTP bridge. It can inject keyboard and mouse events, read and write the Mac clipboard, list running applications, and focus applications when requested. Use it only on a trusted network; do not expose port `8787` to the internet. The access token in the URL should be treated like a password.
+
+See [SECURITY.md](SECURITY.md) and [PRIVACY.md](PRIVACY.md) for details.
+
 ## 1. Start it on the Mac
 
 ```bash
-cd "/Users/mohindpa/Documents/My Files/Curiosity Projects/MacSpace"
+git clone https://github.com/mohindpa/MacSpace.git
+cd MacSpace
 ./build.sh      # compile (one time, ~10s)
 ./run.sh        # start it, prints the URL for the iPad
 ```
@@ -200,3 +208,12 @@ escape left right up down home end pageup pagedown f1…f20 cmd shift option con
 | Trackpad scrolls the wrong way | tap **⇅** in the pad buttons (flips natural ↔ inverted) |
 | Cursor too slow / too fast | tap **⚡ ×1.6** to cycle pointer speed (1.0 → 1.6 → 2.2) |
 | The pad is cramped in landscape | the keyboard takes most of the height — lower **Key height** in 🎨 Theme, or use portrait |
+
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or pull request.
+
+## License
+
+MacSpace is available under the [MIT License](LICENSE).
