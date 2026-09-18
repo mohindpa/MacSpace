@@ -67,7 +67,7 @@ jobs:
           ./scripts/release.sh "$RELEASE_VERSION"
 
       - name: Upload release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: MacSpace-${{ env.RELEASE_VERSION }}-macOS
           path: dist/
