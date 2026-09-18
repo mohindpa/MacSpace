@@ -1,3 +1,5 @@
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 # MacSpace
 
 Turn your iPad Pro into a keyboard, trackpad and remote control for your Mac.
